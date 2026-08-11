@@ -1,6 +1,7 @@
-// Generates the placeholder FieldSynk app icons — a bold white "F" monogram on
-// FieldSynk blue. Pure shapes (no fonts) so it renders crisp at every size.
-// Run: node scripts/gen-icons.mjs   (needs the sharp devDependency)
+// Generates the FieldSynk app icons from the real brand logo (the 3D metallic "F").
+// The logo ships on a near-white matte, so the icons use a white background — the
+// gold + blue metals pop on white and the matte blends seamlessly. Run after
+// changing the logo: node scripts/gen-icons.mjs   (needs the sharp devDependency)
 import sharp from 'sharp'
 import { mkdirSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
@@ -10,27 +11,26 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const ASSETS = resolve(__dirname, '../assets')
 mkdirSync(ASSETS, { recursive: true })
 
-const BLUE = '#2563eb'
+// The brand logo lives in the web repo; keep this the single source of truth.
+const LOGO = resolve(__dirname, '../../FieldSynk Files/public/fieldsynk-logo.png')
+const WHITE = '#ffffff'
 
-// The "F", built from three rounded rectangles on a 1024 canvas.
-const F = `
-  <rect x="378" y="300" width="118" height="430" rx="20"/>
-  <rect x="378" y="300" width="300" height="118" rx="20"/>
-  <rect x="378" y="476" width="230" height="106" rx="20"/>
-`
+const canvas = () => ({ create: { width: 1024, height: 1024, channels: 4, background: WHITE } })
+const logoAt = (size) => sharp(LOGO).resize(size, size, { fit: 'inside' }).png().toBuffer()
 
-const onBlue = `<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg"><rect width="1024" height="1024" fill="${BLUE}"/><g fill="#ffffff">${F}</g></svg>`
-const onClear = `<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg"><g fill="#ffffff">${F}</g></svg>`
-
-async function write(svg, file, size) {
-  let img = sharp(Buffer.from(svg))
-  if (size) img = img.resize(size, size)
-  await img.png().toFile(resolve(ASSETS, file))
+async function make(file, logoSize, canvasSize = 1024) {
+  const c = { create: { width: canvasSize, height: canvasSize, channels: 4, background: WHITE } }
+  await sharp(c)
+    .composite([{ input: await logoAt(logoSize), gravity: 'center' }])
+    .flatten({ background: WHITE })
+    .removeAlpha()
+    .png()
+    .toFile(resolve(ASSETS, file))
   console.log('wrote assets/' + file)
 }
 
-await write(onBlue, 'icon.png') // iOS/app icon — opaque, full bleed
-await write(onClear, 'adaptive-icon.png') // Android adaptive foreground (bg color in app.json)
-await write(onClear, 'splash-icon.png') // splash mark (bg color in app.json)
-await write(onBlue, 'favicon.png', 48) // web favicon
+await make('icon.png', 860) // iOS/app icon — a little margin around the F
+await make('adaptive-icon.png', 600) // Android foreground within the safe zone
+await make('splash-icon.png', 560) // launch-screen mark
+await make('favicon.png', 40, 48) // web
 console.log('done')
