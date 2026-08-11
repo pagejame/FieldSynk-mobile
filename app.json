@@ -18,15 +18,27 @@
     "android": {
       "package": "com.fieldsynk.mobile",
       "versionCode": 1,
-      "permissions": ["android.permission.INTERNET"]
+      "permissions": [
+        "android.permission.INTERNET"
+      ]
     },
     "web": {
       "bundler": "metro",
       "output": "single"
     },
-    "plugins": ["expo-router", "expo-splash-screen"],
+    "plugins": [
+      "expo-router",
+      "expo-splash-screen"
+    ],
     "experiments": {
       "typedRoutes": false
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "61d29b5b-3c12-469a-95ce-33096bb4e35d"
+      }
+    },
+    "owner": "pagejame"
   }
 }
