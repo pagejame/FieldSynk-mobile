@@ -1,0 +1,15 @@
+node_modules/
+.expo/
+dist/
+web-build/
+*.log
+.env
+.env.local
+ios/
+android/
+.DS_Store
+*.p8
+*.p12
+*.key
+*.mobileprovision
+google-service-account.json

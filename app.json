@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "FieldSynk",
+    "slug": "fieldsynk-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "fieldsynk",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.fieldsynk.mobile",
+      "buildNumber": "1",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.fieldsynk.mobile",
+      "versionCode": 1,
+      "permissions": ["android.permission.INTERNET"]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": ["expo-router", "expo-splash-screen"],
+    "experiments": {
+      "typedRoutes": false
+    }
+  }
+}
