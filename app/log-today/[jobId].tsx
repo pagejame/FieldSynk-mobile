@@ -86,15 +86,37 @@ export default function LogTodayScreen() {
     async (forDate: string) => {
       if (!jobId) return
       setLoading(true)
-      const [{ data: j }, { data: roster }, { data: co }] = await Promise.all([
+      const [{ data: j }, { data: roster }, { data: co }, { data: cm }] = await Promise.all([
         supabase.from('jobs').select('job_number, job_name').eq('id', jobId).maybeSingle(),
         supabase.from('employees').select('id, name').eq('status', 'active').order('name'),
         supabase.from('companies').select('settings').maybeSingle(),
+        // The crew assigned to THIS job (across its crews), so the foreman sees
+        // their 6 workers, not the whole company. Falls back to the full roster.
+        supabase
+          .from('job_crew_members')
+          .select('employee_id, employees(name), job_crews!inner(job_id)')
+          .eq('job_crews.job_id', jobId),
       ])
       const matsOn =
         !!(co?.settings as { modules?: { materials?: boolean } } | null)?.modules?.materials
       setJob(j as { job_number: string; job_name: string } | null)
       setMaterialsEnabled(matsOn)
+
+      // Prefer the job's crew (deduped); if no crew is set up, use the active roster.
+      const seenEmp = new Set<string>()
+      const jobCrew: { id: string; name: string }[] = []
+      for (const m of (cm ?? []) as unknown as {
+        employee_id: string | null
+        employees: { name: string } | null
+      }[]) {
+        if (m.employee_id && !seenEmp.has(m.employee_id)) {
+          seenEmp.add(m.employee_id)
+          jobCrew.push({ id: m.employee_id, name: m.employees?.name ?? '' })
+        }
+      }
+      jobCrew.sort((a, b) => a.name.localeCompare(b.name))
+      const effectiveRoster =
+        jobCrew.length > 0 ? jobCrew : ((roster ?? []) as { id: string; name: string }[])
 
       const [{ data: lab }, { data: rep }, { data: abs }, mat] = await Promise.all([
         supabase
@@ -164,7 +186,7 @@ export default function LogTodayScreen() {
           })
       }
 
-      const rows: CrewRow[] = ((roster ?? []) as { id: string; name: string }[]).map((e) => {
+      const rows: CrewRow[] = effectiveRoster.map((e) => {
         const l = byEmp.get(e.id)
         const ab = absByEmp.get(e.id)
         return {
