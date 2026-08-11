@@ -17,7 +17,10 @@ import { Screen } from '@/components/Screen'
 import { Button } from '@/components/Button'
 import { supabase } from '@/lib/supabase'
 import { colors, fontSize, spacing, radius } from '@/lib/theme'
-import { laborAction, rowAction, validQuantity, persistedLaborTotal } from '@/lib/daily-report'
+import { validQuantity, persistedLaborTotal } from '@/lib/daily-report'
+import { applyReport } from '@/lib/apply-report'
+import { enqueueReport } from '@/lib/offline-queue'
+import { useNetworkStatus } from '@/lib/use-network'
 
 // ── date helpers (no timezone drift) ──────────────────────────────────────────
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -72,8 +75,8 @@ export default function LogTodayScreen() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
+  const online = useNetworkStatus()
   const [crew, setCrew] = useState<CrewRow[]>([])
-  const [reportId, setReportId] = useState<string | null>(null)
   const [work, setWork] = useState('')
   const [notes, setNotes] = useState('')
   const [materials, setMaterials] = useState<MaterialRow[]>([])
@@ -181,7 +184,6 @@ export default function LogTodayScreen() {
       })
 
       const repRow = ((rep ?? []) as { id: string; work_performed: string | null; notes: string | null }[])[0]
-      setReportId(repRow?.id ?? null)
       setWork(repRow?.work_performed ?? '')
       setNotes(repRow?.notes ?? '')
       setCrew(rows)
@@ -234,129 +236,57 @@ export default function LogTodayScreen() {
       }
     }
     setSaving(true)
-    const errs: string[] = []
 
-    for (const row of crew) {
-      if (row.locked) continue
-      const laborId = row.laborIds[0] ?? null
+    const payload = {
+      jobId: jobId as string,
+      date,
+      crew: crew.map((r) => ({
+        employeeId: r.employeeId,
+        name: r.name,
+        out: r.out,
+        reason: r.reason,
+        hoursMissed: r.hoursMissed,
+        st: r.st,
+        ot: r.ot,
+        dt: r.dt,
+        costCodeId: r.costCodeId,
+        locked: r.locked,
+      })),
+      work,
+      notes,
+      materials: materials.map((m) => ({ name: m.name, qty: m.qty, unit: m.unit })),
+      materialsEnabled,
+    }
 
-      if (row.out) {
-        // Absent: remove any hours, upsert the absence.
-        if (laborId) {
-          const { error } = await supabase.from('labor_entries').delete().eq('id', laborId)
-          if (error) errs.push(`${row.name} hours`)
-        }
-        const payload = {
-          job_id: jobId,
-          date,
-          employee_id: row.employeeId,
-          employee_name: row.name,
-          reason: row.reason.trim() || null,
-          hours_missed: row.hoursMissed.trim() === '' ? null : numVal(row.hoursMissed),
-        }
-        if (row.absenceId) {
-          const { error } = await supabase.from('absence_entries').update(payload).eq('id', row.absenceId)
-          if (error) errs.push(`${row.name} absence`)
-        } else {
-          const { data, error } = await supabase
-            .from('absence_entries')
-            .insert(payload)
-            .select('id')
-            .single()
-          if (error) errs.push(`${row.name} absence`)
-          else patchCrew(row.employeeId, { absenceId: (data as { id: string }).id, laborIds: [] })
-        }
+    const queueIt = async (reason: 'offline' | 'dropped') => {
+      await enqueueReport(payload)
+      setSaving(false)
+      Alert.alert(
+        'Saved on your phone',
+        reason === 'offline'
+          ? "No signal — this report syncs automatically when you're back online."
+          : "Lost signal mid-save — this report syncs automatically when you're back online.",
+        [{ text: 'OK', onPress: () => router.back() }],
+      )
+    }
+
+    // Known offline → don't even try; keep it safe on the device.
+    if (!online) {
+      await queueIt('offline')
+      return
+    }
+
+    try {
+      const { errors } = await applyReport(payload)
+      setSaving(false)
+      if (errors.length === 0) {
+        Alert.alert('Saved', "Today's report is saved.", [{ text: 'OK', onPress: () => router.back() }])
       } else {
-        // Present: remove any stale absence, upsert hours.
-        if (row.absenceId) {
-          const { error } = await supabase.from('absence_entries').delete().eq('id', row.absenceId)
-          if (!error) patchCrew(row.employeeId, { absenceId: null })
-        }
-        const action = laborAction({ existingId: laborId, st: row.st, ot: row.ot, dt: row.dt })
-        if (action === 'insert') {
-          const { data, error } = await supabase
-            .from('labor_entries')
-            .insert({
-              job_id: jobId,
-              date,
-              employee_id: row.employeeId,
-              cost_code_id: row.costCodeId,
-              hours_regular: row.st,
-              hours_ot: row.ot,
-              hours_dt: row.dt,
-            })
-            .select('id')
-            .single()
-          if (error) errs.push(`${row.name} hours`)
-          else patchCrew(row.employeeId, { laborIds: [(data as { id: string }).id] })
-        } else if (action === 'update') {
-          const { error } = await supabase
-            .from('labor_entries')
-            .update({
-              hours_regular: row.st,
-              hours_ot: row.ot,
-              hours_dt: row.dt,
-            })
-            .eq('id', laborId as string)
-          if (error) errs.push(`${row.name} hours`)
-        } else if (action === 'delete') {
-          const { error } = await supabase.from('labor_entries').delete().eq('id', laborId as string)
-          if (!error) patchCrew(row.employeeId, { laborIds: [] })
-        }
+        Alert.alert('Partly saved', `Couldn't save: ${errors.join(', ')}. Check the entries and Save again.`)
       }
-    }
-
-    // Work performed.
-    const repAction = rowAction(reportId, work.trim() !== '')
-    if (repAction === 'insert') {
-      const { data, error } = await supabase
-        .from('daily_reports')
-        .insert({ job_id: jobId, date, work_performed: work.trim() || null, notes: notes.trim() || null })
-        .select('id')
-        .single()
-      if (error) errs.push('work performed')
-      else setReportId((data as { id: string }).id)
-    } else if (repAction === 'update') {
-      const { error } = await supabase
-        .from('daily_reports')
-        .update({ work_performed: work.trim() || null, notes: notes.trim() || null })
-        .eq('id', reportId as string)
-      if (error) errs.push('work performed')
-    } else if (repAction === 'delete') {
-      const { error } = await supabase.from('daily_reports').delete().eq('id', reportId as string)
-      if (!error) setReportId(null)
-    }
-
-    // Materials.
-    if (materialsEnabled) {
-      for (const m of materials) {
-        const has = m.name.trim() !== '' && validQuantity(m.qty)
-        const action = rowAction(m.existingId, has)
-        const payload = {
-          job_id: jobId,
-          date,
-          material_name: m.name.trim(),
-          quantity: Number(m.qty),
-          unit: m.unit.trim() || null,
-        }
-        if (action === 'insert') {
-          const { data, error } = await supabase.from('material_entries').insert(payload).select('id').single()
-          if (error) errs.push('material')
-          else patchMaterial(m.key, { existingId: (data as { id: string }).id })
-        } else if (action === 'update') {
-          const { error } = await supabase.from('material_entries').update(payload).eq('id', m.existingId as string)
-          if (error) errs.push('material')
-        } else if (action === 'delete') {
-          await supabase.from('material_entries').delete().eq('id', m.existingId as string)
-        }
-      }
-    }
-
-    setSaving(false)
-    if (errs.length === 0) {
-      Alert.alert('Saved', "Today's report is saved.", [{ text: 'OK', onPress: () => router.back() }])
-    } else {
-      Alert.alert('Partly saved', `Couldn't save: ${errs.join(', ')}. Check your signal and Save again.`)
+    } catch {
+      // Signal dropped mid-save — queue and sync later.
+      await queueIt('dropped')
     }
   }
 

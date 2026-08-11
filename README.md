@@ -13,6 +13,13 @@ Supabase backend. Built to mirror the proven `struksure-mobile` scaffold.
   place (`lib/daily-report.ts`, the same logic as the web app), so re-saving never
   doubles payroll. A worker with a desktop hours-split is shown read-only ("edit on
   fieldsynk.org") so the phone never clobbers it.
+- **Works offline (the field-drop case)** — no signal in a basement? The report is
+  saved on the device and syncs automatically when you're back online. An amber
+  banner shows when offline, and the Jobs screen shows how many reports are waiting
+  to sync (tap to sync now). The save path is `lib/apply-report.ts` (idempotent
+  reconcile) + `lib/offline-queue.ts` (AsyncStorage queue, keyed by job+date so
+  re-editing a day replaces its pending entry); the root layout flushes on
+  reconnect + foreground. Because apply is idempotent, replay never doubles.
 
 ## Setup (James)
 
@@ -47,9 +54,10 @@ are `com.fieldsynk.mobile` (both platforms) — change in `app.json` if you pref
 ## Not built yet (follow-ups)
 - App icon + splash art (currently Expo defaults — drop real art in `assets/` and
   point `app.json` at it).
-- Offline queue (log with no signal, sync later), push notifications, biometric lock
-  — all present in `struksure-mobile` and portable here when wanted.
-- Scan-a-form capture on device (the web already has AI extraction).
+- Push notifications, biometric lock — present in `struksure-mobile`, portable here
+  when wanted. (Offline sync is now built — see above.)
+- Cost-code picker per worker on the phone (kept off for speed; codes can be set on
+  the web). Scan-a-form capture on device (the web already has AI extraction).
 
 ## Status
 **Device-unverified.** The code mirrors the proven `struksure-mobile` patterns but

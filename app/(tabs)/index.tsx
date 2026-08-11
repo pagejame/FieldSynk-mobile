@@ -12,6 +12,7 @@ import { useFocusEffect, useRouter } from 'expo-router'
 import { Feather } from '@expo/vector-icons'
 import { Screen } from '@/components/Screen'
 import { supabase } from '@/lib/supabase'
+import { getQueueCount, flushQueue } from '@/lib/offline-queue'
 import { colors, fontSize, spacing, radius } from '@/lib/theme'
 
 interface Job {
@@ -26,6 +27,7 @@ export default function JobsScreen() {
   const [jobs, setJobs] = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [pending, setPending] = useState(0)
 
   const load = useCallback(async () => {
     const { data } = await supabase
@@ -34,9 +36,15 @@ export default function JobsScreen() {
       .eq('is_overhead', false)
       .order('job_number')
     setJobs((data ?? []) as Job[])
+    setPending(await getQueueCount())
     setLoading(false)
     setRefreshing(false)
   }, [])
+
+  async function syncNow() {
+    await flushQueue()
+    setPending(await getQueueCount())
+  }
 
   useFocusEffect(
     useCallback(() => {
@@ -50,6 +58,15 @@ export default function JobsScreen() {
         <Text style={styles.title}>Jobs</Text>
         <Text style={styles.subtitle}>Pick a job to log today&apos;s report.</Text>
       </View>
+
+      {pending > 0 && (
+        <TouchableOpacity style={styles.syncChip} onPress={syncNow} activeOpacity={0.7}>
+          <Feather name="upload-cloud" size={14} color={colors.warning} />
+          <Text style={styles.syncText}>
+            {pending} report{pending === 1 ? '' : 's'} waiting to sync — tap to sync now
+          </Text>
+        </TouchableOpacity>
+      )}
 
       {loading ? (
         <ActivityIndicator style={{ marginTop: spacing.xl }} color={colors.primary} />
@@ -111,6 +128,18 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.sm },
   title: { fontSize: fontSize.xxl, fontWeight: '700', color: colors.textPrimary },
   subtitle: { fontSize: fontSize.sm, color: colors.textSecondary, marginTop: 2 },
+  syncChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs + 2,
+    borderRadius: radius.md,
+    backgroundColor: colors.warningSoft,
+  },
+  syncText: { flex: 1, fontSize: fontSize.xs, fontWeight: '600', color: colors.warning },
   list: { padding: spacing.md, gap: spacing.sm },
   empty: { textAlign: 'center', color: colors.textMuted, marginTop: spacing.xl, fontSize: fontSize.md },
   card: {

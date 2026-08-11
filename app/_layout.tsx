@@ -3,12 +3,16 @@ import { Stack, useRouter, useSegments } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { View, ActivityIndicator, StyleSheet } from 'react-native'
 import { SessionProvider, useSession } from '@/lib/session-context'
+import { useNetworkStatus } from '@/lib/use-network'
+import { flushQueue } from '@/lib/offline-queue'
+import { OfflineBanner } from '@/components/OfflineBanner'
 import { colors } from '@/lib/theme'
 
 function RootNavigator() {
   const { session, loading } = useSession()
   const router = useRouter()
   const segments = useSegments()
+  const online = useNetworkStatus()
 
   useEffect(() => {
     if (loading) return
@@ -20,6 +24,12 @@ function RootNavigator() {
     }
   }, [session, loading, segments])
 
+  // Sync any reports that were saved offline, whenever we're online (mount + on
+  // reconnect + on app foreground, since the probe re-checks then).
+  useEffect(() => {
+    if (session && online) void flushQueue()
+  }, [session, online])
+
   if (loading) {
     return (
       <View style={styles.loading}>
@@ -29,14 +39,17 @@ function RootNavigator() {
   }
 
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="(auth)" />
-      <Stack.Screen name="(tabs)" />
-      <Stack.Screen
-        name="log-today/[jobId]"
-        options={{ headerShown: false, animation: 'slide_from_right' }}
-      />
-    </Stack>
+    <View style={styles.flex}>
+      {session && !online && <OfflineBanner />}
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="(auth)" />
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen
+          name="log-today/[jobId]"
+          options={{ headerShown: false, animation: 'slide_from_right' }}
+        />
+      </Stack>
+    </View>
   )
 }
 
@@ -50,6 +63,7 @@ export default function RootLayout() {
 }
 
 const styles = StyleSheet.create({
+  flex: { flex: 1 },
   loading: {
     flex: 1,
     alignItems: 'center',
