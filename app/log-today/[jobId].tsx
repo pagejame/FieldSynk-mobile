@@ -21,6 +21,8 @@ import { validQuantity, persistedLaborTotal } from '@/lib/daily-report'
 import { applyReport } from '@/lib/apply-report'
 import { enqueueReport } from '@/lib/offline-queue'
 import { useNetworkStatus } from '@/lib/use-network'
+import { uploadJobDocument } from '@/lib/upload-doc'
+import * as ImagePicker from 'expo-image-picker'
 
 // ── date helpers (no timezone drift) ──────────────────────────────────────────
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -92,6 +94,9 @@ export default function LogTodayScreen() {
   const [incident, setIncident] = useState<boolean | null>(null)
   const [incidentNotes, setIncidentNotes] = useState('')
   const [savingSafety, setSavingSafety] = useState(false)
+  const [companyId, setCompanyId] = useState<string | null>(null)
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
+  const [safetyPhotoCount, setSafetyPhotoCount] = useState(0)
 
   const load = useCallback(
     async (forDate: string) => {
@@ -100,7 +105,7 @@ export default function LogTodayScreen() {
       const [{ data: j }, { data: roster }, { data: co }, { data: cm }] = await Promise.all([
         supabase.from('jobs').select('job_number, job_name').eq('id', jobId).maybeSingle(),
         supabase.from('employees').select('id, name').eq('status', 'active').order('name'),
-        supabase.from('companies').select('settings').maybeSingle(),
+        supabase.from('companies').select('id, settings').maybeSingle(),
         // The crew assigned to THIS job (across its crews), so the foreman sees
         // their 6 workers, not the whole company. Falls back to the full roster.
         supabase
@@ -114,6 +119,7 @@ export default function LogTodayScreen() {
       const safetyOn =
         (co?.settings as { modules?: { safety?: boolean } } | null)?.modules?.safety !== false
       setJob(j as { job_number: string; job_name: string } | null)
+      setCompanyId((co as { id?: string } | null)?.id ?? null)
       setMaterialsEnabled(matsOn)
       setSafetyEnabled(safetyOn)
 
@@ -385,6 +391,66 @@ export default function LogTodayScreen() {
     else Alert.alert('Safety saved', "Today's safety check is saved.")
   }
 
+  function addSafetyPhoto() {
+    if (!companyId) {
+      Alert.alert('Safety', 'Still loading — try again in a moment.')
+      return
+    }
+    if (!online) {
+      Alert.alert('No signal', 'Photo uploads need a connection. Try again once you have signal.')
+      return
+    }
+    Alert.alert('Add safety form', "Photograph today's safety form or pick it from your library.", [
+      { text: 'Take photo', onPress: () => void pickAndUpload('camera') },
+      { text: 'Choose from library', onPress: () => void pickAndUpload('library') },
+      { text: 'Cancel', style: 'cancel' },
+    ])
+  }
+
+  async function pickAndUpload(source: 'camera' | 'library') {
+    try {
+      const perm =
+        source === 'camera'
+          ? await ImagePicker.requestCameraPermissionsAsync()
+          : await ImagePicker.requestMediaLibraryPermissionsAsync()
+      if (!perm.granted) {
+        Alert.alert(
+          'Permission needed',
+          source === 'camera'
+            ? 'Allow camera access to photograph safety forms.'
+            : 'Allow photo access to attach safety forms.',
+        )
+        return
+      }
+      const result =
+        source === 'camera'
+          ? await ImagePicker.launchCameraAsync({ quality: 0.6 })
+          : await ImagePicker.launchImageLibraryAsync({ quality: 0.6, mediaTypes: ['images'] })
+      if (result.canceled || !result.assets?.[0]) return
+
+      const asset = result.assets[0]
+      setUploadingPhoto(true)
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      await uploadJobDocument({
+        companyId: companyId as string,
+        jobId: jobId as string,
+        userId: user?.id ?? null,
+        uri: asset.uri,
+        fileName: asset.fileName ?? `safety-${Date.now()}.jpg`,
+        mimeType: asset.mimeType ?? 'image/jpeg',
+        docType: 'safety_doc',
+      })
+      setSafetyPhotoCount((c) => c + 1)
+      Alert.alert('Saved', 'Safety form stored on this job.')
+    } catch (e) {
+      Alert.alert('Upload failed', e instanceof Error ? e.message : 'Could not upload the photo.')
+    } finally {
+      setUploadingPhoto(false)
+    }
+  }
+
   if (loading) {
     return (
       <Screen>
@@ -611,9 +677,24 @@ export default function LogTodayScreen() {
                     {savingSafety ? 'Saving…' : 'Save safety'}
                   </Text>
                 </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={addSafetyPhoto}
+                  disabled={uploadingPhoto}
+                  style={styles.photoBtn}
+                >
+                  <Feather name="camera" size={16} color={colors.primary} />
+                  <Text style={styles.photoBtnText}>
+                    {uploadingPhoto ? 'Uploading…' : "Add safety form photo"}
+                  </Text>
+                </TouchableOpacity>
+                {safetyPhotoCount > 0 && (
+                  <Text style={styles.safetyHint}>
+                    {safetyPhotoCount} safety form{safetyPhotoCount === 1 ? '' : 's'} added today.
+                  </Text>
+                )}
                 <Text style={styles.safetyHint}>
-                  Upload the day&apos;s safety forms on fieldsynk.org — safety records stay
-                  separate from your reports.
+                  Safety records are stored on this job and stay separate from your reports.
                 </Text>
               </View>
             </>
@@ -782,6 +863,19 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
   safetySaveText: { color: '#ffffff', fontWeight: '700', fontSize: fontSize.md },
+  photoBtn: {
+    marginTop: spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySoft,
+  },
+  photoBtnText: { color: colors.primary, fontWeight: '700', fontSize: fontSize.md },
   safetyHint: { fontSize: fontSize.xs, color: colors.textMuted, marginTop: 4 },
   saveBar: {
     padding: spacing.md,

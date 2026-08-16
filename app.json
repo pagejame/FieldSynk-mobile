@@ -14,7 +14,9 @@
       "buildNumber": "1",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSMicrophoneUsageDescription": "FieldSynk uses the microphone so you can speak your daily report instead of writing it."
+        "NSMicrophoneUsageDescription": "FieldSynk uses the microphone so you can speak your daily report instead of writing it.",
+        "NSCameraUsageDescription": "FieldSynk uses the camera so you can photograph the day's safety forms and store them on the job.",
+        "NSPhotoLibraryUsageDescription": "FieldSynk lets you attach the day's safety forms from your photo library."
       }
     },
     "android": {
@@ -26,7 +28,8 @@
       },
       "permissions": [
         "android.permission.INTERNET",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.CAMERA"
       ]
     },
     "web": {
@@ -48,6 +51,13 @@
         "expo-audio",
         {
           "microphonePermission": "FieldSynk uses the microphone so you can speak your daily report instead of writing it."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "FieldSynk lets you attach the day's safety forms from your photo library.",
+          "cameraPermission": "FieldSynk uses the camera so you can photograph the day's safety forms and store them on the job."
         }
       ]
     ],
