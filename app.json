@@ -13,7 +13,8 @@
       "bundleIdentifier": "com.fieldsynk.mobile",
       "buildNumber": "1",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSMicrophoneUsageDescription": "FieldSynk uses the microphone so you can speak your daily report instead of writing it."
       }
     },
     "android": {
@@ -24,7 +25,8 @@
         "backgroundColor": "#ffffff"
       },
       "permissions": [
-        "android.permission.INTERNET"
+        "android.permission.INTERNET",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
@@ -40,6 +42,12 @@
           "image": "./assets/splash-icon.png",
           "backgroundColor": "#ffffff",
           "imageWidth": 220
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "FieldSynk uses the microphone so you can speak your daily report instead of writing it."
         }
       ]
     ],

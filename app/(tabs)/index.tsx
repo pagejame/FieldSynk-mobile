@@ -56,7 +56,9 @@ export default function JobsScreen() {
     <Screen>
       <View style={styles.header}>
         <Text style={styles.title}>Jobs</Text>
-        <Text style={styles.subtitle}>Pick a job to log today&apos;s report.</Text>
+        <Text style={styles.subtitle}>
+          Tap a job to log today&apos;s report — or the mic to speak it.
+        </Text>
       </View>
 
       {pending > 0 && (
@@ -99,6 +101,15 @@ export default function JobsScreen() {
                 <Text style={styles.jobName}>{item.job_name}</Text>
               </View>
               <View style={styles.cardRight}>
+                <TouchableOpacity
+                  onPress={() => router.push(`/voice/${item.id}`)}
+                  style={styles.micBtn}
+                  activeOpacity={0.7}
+                  hitSlop={8}
+                  accessibilityLabel="Speak today's report"
+                >
+                  <Feather name="mic" size={18} color={colors.primary} />
+                </TouchableOpacity>
                 <View
                   style={[
                     styles.statusPill,
@@ -156,6 +167,14 @@ const styles = StyleSheet.create({
   jobNumber: { fontSize: fontSize.xs, color: colors.textMuted, fontWeight: '700', letterSpacing: 0.5 },
   jobName: { fontSize: fontSize.lg, color: colors.textPrimary, fontWeight: '600', marginTop: 2 },
   cardRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  micBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: radius.pill,
+    backgroundColor: colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   statusPill: { paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radius.pill },
   statusActive: { backgroundColor: colors.successSoft },
   statusOther: { backgroundColor: colors.surfaceHigh },
