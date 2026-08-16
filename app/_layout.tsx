@@ -5,6 +5,7 @@ import { View, ActivityIndicator, StyleSheet } from 'react-native'
 import { SessionProvider, useSession } from '@/lib/session-context'
 import { useNetworkStatus } from '@/lib/use-network'
 import { flushQueue } from '@/lib/offline-queue'
+import { flushSafetyQueue } from '@/lib/safety-queue'
 import { OfflineBanner } from '@/components/OfflineBanner'
 import { colors } from '@/lib/theme'
 
@@ -27,7 +28,10 @@ function RootNavigator() {
   // Sync any reports that were saved offline, whenever we're online (mount + on
   // reconnect + on app foreground, since the probe re-checks then).
   useEffect(() => {
-    if (session && online) void flushQueue()
+    if (session && online) {
+      void flushQueue()
+      void flushSafetyQueue() // separate queue — safety never rides the payroll path
+    }
   }, [session, online])
 
   if (loading) {

@@ -20,6 +20,7 @@ import { colors, fontSize, spacing, radius } from '@/lib/theme'
 import { validQuantity, persistedLaborTotal } from '@/lib/daily-report'
 import { applyReport } from '@/lib/apply-report'
 import { enqueueReport } from '@/lib/offline-queue'
+import { enqueueSafetyAnswer, enqueueSafetyPhoto } from '@/lib/safety-queue'
 import { useNetworkStatus } from '@/lib/use-network'
 import { uploadJobDocument } from '@/lib/upload-doc'
 import * as ImagePicker from 'expo-image-picker'
@@ -367,10 +368,19 @@ export default function LogTodayScreen() {
       Alert.alert('Safety', 'Please describe what happened in the incident.')
       return
     }
+    // No signal → keep it safe on the phone; it syncs automatically later.
     if (!online) {
+      await enqueueSafetyAnswer({
+        jobId: jobId as string,
+        date,
+        formsCompleted: formsDone,
+        missingReason: formsDone === false ? missingReason.trim() : null,
+        incident: incident === true,
+        incidentNotes: incident === true ? incidentNotes.trim() : null,
+      })
       Alert.alert(
-        'No signal',
-        'Safety saves when you have a connection. Try again once you have signal.',
+        'Saved on your phone',
+        "No signal — this safety check syncs automatically when you're back online.",
       )
       return
     }
@@ -394,10 +404,6 @@ export default function LogTodayScreen() {
   function addSafetyPhoto() {
     if (!companyId) {
       Alert.alert('Safety', 'Still loading — try again in a moment.')
-      return
-    }
-    if (!online) {
-      Alert.alert('No signal', 'Photo uploads need a connection. Try again once you have signal.')
       return
     }
     Alert.alert('Add safety form', "Photograph today's safety form or pick it from your library.", [
@@ -429,7 +435,27 @@ export default function LogTodayScreen() {
       if (result.canceled || !result.assets?.[0]) return
 
       const asset = result.assets[0]
+      const fileName = asset.fileName ?? `safety-${Date.now()}.jpg`
+      const mimeType = asset.mimeType ?? 'image/jpeg'
       setUploadingPhoto(true)
+
+      // No signal → copy the photo to the phone and queue it; it uploads later.
+      if (!online) {
+        await enqueueSafetyPhoto({
+          companyId: companyId as string,
+          jobId: jobId as string,
+          uri: asset.uri,
+          fileName,
+          mimeType,
+        })
+        setSafetyPhotoCount((c) => c + 1)
+        Alert.alert(
+          'Saved on your phone',
+          "No signal — this safety form uploads automatically when you're back online.",
+        )
+        return
+      }
+
       const {
         data: { user },
       } = await supabase.auth.getUser()
@@ -438,8 +464,8 @@ export default function LogTodayScreen() {
         jobId: jobId as string,
         userId: user?.id ?? null,
         uri: asset.uri,
-        fileName: asset.fileName ?? `safety-${Date.now()}.jpg`,
-        mimeType: asset.mimeType ?? 'image/jpeg',
+        fileName,
+        mimeType,
         docType: 'safety_doc',
       })
       setSafetyPhotoCount((c) => c + 1)
