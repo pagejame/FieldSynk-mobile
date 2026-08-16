@@ -82,6 +82,17 @@ export default function LogTodayScreen() {
   const [materials, setMaterials] = useState<MaterialRow[]>([])
   const [seq, setSeq] = useState(0)
 
+  // Safety — captured + saved SEPARATELY from the report (never through the offline
+  // queue, so it can't touch the payroll sync path). One row per job-day in
+  // safety_daily. Kept apart from the report on purpose: safety never goes into
+  // weekly reports.
+  const [safetyEnabled, setSafetyEnabled] = useState(false)
+  const [formsDone, setFormsDone] = useState<boolean | null>(null)
+  const [missingReason, setMissingReason] = useState('')
+  const [incident, setIncident] = useState<boolean | null>(null)
+  const [incidentNotes, setIncidentNotes] = useState('')
+  const [savingSafety, setSavingSafety] = useState(false)
+
   const load = useCallback(
     async (forDate: string) => {
       if (!jobId) return
@@ -99,8 +110,12 @@ export default function LogTodayScreen() {
       ])
       const matsOn =
         !!(co?.settings as { modules?: { materials?: boolean } } | null)?.modules?.materials
+      // Safety is on unless the company explicitly turned it off (matches web).
+      const safetyOn =
+        (co?.settings as { modules?: { safety?: boolean } } | null)?.modules?.safety !== false
       setJob(j as { job_number: string; job_name: string } | null)
       setMaterialsEnabled(matsOn)
+      setSafetyEnabled(safetyOn)
 
       // Prefer the job's crew (deduped); if no crew is set up, use the active roster.
       const seenEmp = new Set<string>()
@@ -118,7 +133,7 @@ export default function LogTodayScreen() {
       const effectiveRoster =
         jobCrew.length > 0 ? jobCrew : ((roster ?? []) as { id: string; name: string }[])
 
-      const [{ data: lab }, { data: rep }, { data: abs }, mat] = await Promise.all([
+      const [{ data: lab }, { data: rep }, { data: abs }, mat, { data: sd }] = await Promise.all([
         supabase
           .from('labor_entries')
           .select('id, employee_id, cost_code_id, hours_regular, hours_ot, hours_dt')
@@ -143,6 +158,14 @@ export default function LogTodayScreen() {
               .eq('job_id', jobId)
               .eq('date', forDate)
           : Promise.resolve({ data: [] as unknown[] }),
+        safetyOn
+          ? supabase
+              .from('safety_daily')
+              .select('forms_completed, missing_reason, incident, incident_notes')
+              .eq('job_id', jobId)
+              .eq('date', forDate)
+              .maybeSingle()
+          : Promise.resolve({ data: null }),
       ])
 
       // Group existing labor by employee.
@@ -223,6 +246,19 @@ export default function LogTodayScreen() {
           unit: m.unit ?? '',
         })),
       )
+
+      // Load today's safety record (idempotent — edits in place).
+      const sdRow = sd as {
+        forms_completed: boolean
+        missing_reason: string | null
+        incident: boolean
+        incident_notes: string | null
+      } | null
+      setFormsDone(sdRow ? sdRow.forms_completed : null)
+      setMissingReason(sdRow?.missing_reason ?? '')
+      setIncident(sdRow ? sdRow.incident : null)
+      setIncidentNotes(sdRow?.incident_notes ?? '')
+
       setLoading(false)
     },
     [jobId],
@@ -310,6 +346,43 @@ export default function LogTodayScreen() {
       // Signal dropped mid-save — queue and sync later.
       await queueIt('dropped')
     }
+  }
+
+  async function saveSafety() {
+    if (formsDone === null) {
+      Alert.alert('Safety', "Answer whether today's safety forms are completed.")
+      return
+    }
+    if (formsDone === false && !missingReason.trim()) {
+      Alert.alert('Safety', "Please explain why the safety forms aren't completed.")
+      return
+    }
+    if (incident === true && !incidentNotes.trim()) {
+      Alert.alert('Safety', 'Please describe what happened in the incident.')
+      return
+    }
+    if (!online) {
+      Alert.alert(
+        'No signal',
+        'Safety saves when you have a connection. Try again once you have signal.',
+      )
+      return
+    }
+    setSavingSafety(true)
+    const { error } = await supabase.from('safety_daily').upsert(
+      {
+        job_id: jobId as string,
+        date,
+        forms_completed: formsDone,
+        missing_reason: formsDone === false ? missingReason.trim() : null,
+        incident: incident === true,
+        incident_notes: incident === true ? incidentNotes.trim() : null,
+      },
+      { onConflict: 'job_id,date' },
+    )
+    setSavingSafety(false)
+    if (error) Alert.alert('Safety', error.message)
+    else Alert.alert('Safety saved', "Today's safety check is saved.")
   }
 
   if (loading) {
@@ -470,6 +543,82 @@ export default function LogTodayScreen() {
             </>
           )}
 
+          {/* Safety — separate from the report; saved on its own */}
+          {safetyEnabled && (
+            <>
+              <Text style={styles.sectionTitle}>Safety</Text>
+              <View style={styles.safetyCard}>
+                <Text style={styles.safetyQ}>Are today&apos;s safety forms completed?</Text>
+                <View style={styles.choiceRow}>
+                  <ChoiceBtn
+                    label="Yes, completed"
+                    active={formsDone === true}
+                    tone="success"
+                    onPress={() => setFormsDone(true)}
+                  />
+                  <ChoiceBtn
+                    label="No"
+                    active={formsDone === false}
+                    tone="warning"
+                    onPress={() => setFormsDone(false)}
+                  />
+                </View>
+                {formsDone === false && (
+                  <TextInput
+                    style={[styles.textArea, { minHeight: 56 }]}
+                    placeholder="Why aren't the safety forms done today?"
+                    placeholderTextColor={colors.textMuted}
+                    multiline
+                    value={missingReason}
+                    onChangeText={setMissingReason}
+                  />
+                )}
+
+                <Text style={[styles.safetyQ, { marginTop: spacing.md }]}>
+                  Was there a safety incident today?
+                </Text>
+                <View style={styles.choiceRow}>
+                  <ChoiceBtn
+                    label="No"
+                    active={incident === false}
+                    tone="success"
+                    onPress={() => setIncident(false)}
+                  />
+                  <ChoiceBtn
+                    label="Yes"
+                    active={incident === true}
+                    tone="error"
+                    onPress={() => setIncident(true)}
+                  />
+                </View>
+                {incident === true && (
+                  <TextInput
+                    style={[styles.textArea, { minHeight: 64 }]}
+                    placeholder="What happened? (who, what, when, action taken)"
+                    placeholderTextColor={colors.textMuted}
+                    multiline
+                    value={incidentNotes}
+                    onChangeText={setIncidentNotes}
+                  />
+                )}
+
+                <TouchableOpacity
+                  onPress={saveSafety}
+                  disabled={savingSafety}
+                  style={styles.safetySaveBtn}
+                >
+                  <Text style={styles.safetySaveText}>
+                    {savingSafety ? 'Saving…' : 'Save safety'}
+                  </Text>
+                </TouchableOpacity>
+                <Text style={styles.safetyHint}>
+                  Upload the day&apos;s safety forms on fieldsynk.org — safety records stay
+                  separate from your reports.
+                </Text>
+              </View>
+            </>
+          )}
+
           <View style={{ height: spacing.md }} />
         </ScrollView>
 
@@ -483,6 +632,29 @@ export default function LogTodayScreen() {
         </View>
       </KeyboardAvoidingView>
     </Screen>
+  )
+}
+
+function ChoiceBtn({
+  label,
+  active,
+  tone,
+  onPress,
+}: {
+  label: string
+  active: boolean
+  tone: 'success' | 'warning' | 'error'
+  onPress: () => void
+}) {
+  const bg =
+    tone === 'success' ? colors.success : tone === 'warning' ? colors.warning : colors.error
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      style={[styles.choiceBtn, active && { backgroundColor: bg, borderColor: bg }]}
+    >
+      <Text style={[styles.choiceText, active && { color: '#ffffff' }]}>{label}</Text>
+    </TouchableOpacity>
   )
 }
 
@@ -582,6 +754,35 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   matRow: { flexDirection: 'row', gap: spacing.sm },
+  safetyCard: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  safetyQ: { fontSize: fontSize.md, fontWeight: '600', color: colors.textPrimary },
+  choiceRow: { flexDirection: 'row', gap: spacing.sm },
+  choiceBtn: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.bg,
+  },
+  choiceText: { fontSize: fontSize.md, fontWeight: '600', color: colors.textSecondary },
+  safetySaveBtn: {
+    marginTop: spacing.sm,
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: colors.primary,
+  },
+  safetySaveText: { color: '#ffffff', fontWeight: '700', fontSize: fontSize.md },
+  safetyHint: { fontSize: fontSize.xs, color: colors.textMuted, marginTop: 4 },
   saveBar: {
     padding: spacing.md,
     borderTopWidth: 1,
