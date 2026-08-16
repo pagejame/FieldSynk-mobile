@@ -1,5 +1,5 @@
-// FieldSynk mobile — clean light theme with the FieldSynk blue accent. Light is
-// deliberate: field crews read this in bright daylight, and it matches the web app.
+// FieldSynk mobile — clean light theme in the FieldSynk logo greens (olive + sage).
+// Light is deliberate: field crews read this in bright daylight, and it matches the web app.
 
 export const colors = {
   bg: '#f5f7fa',
@@ -13,10 +13,10 @@ export const colors = {
   textSecondary: '#475569',
   textMuted: '#94a3b8',
 
-  // Primary = FieldSynk blue
-  primary: '#2563eb',
-  primaryLight: '#3b82f6',
-  primarySoft: 'rgba(37, 99, 235, 0.10)',
+  // Primary = FieldSynk olive green (logo), with sage as the light accent
+  primary: '#4a5d2f',
+  primaryLight: '#7f9c5c',
+  primarySoft: 'rgba(74, 93, 47, 0.10)',
 
   nav: '#ffffff',
   navMuted: '#94a3b8',
