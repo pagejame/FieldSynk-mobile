@@ -7,23 +7,13 @@ import { supabase } from './supabase'
 
 const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'https://fieldsynk.org'
 
-export interface VoiceMaterial {
-  name: string
-  quantity: number | null
-  unit: string | null
-}
-export interface VoiceAbsence {
-  name: string
-  reason: string
-}
-export interface VoiceDraft {
-  workPerformed: string
-  absences: VoiceAbsence[]
-  materials: VoiceMaterial[]
-  holdups: string
-  safety: string
-  crewNote: string
-}
+// The draft shape lives in voice-apply, which is what actually consumes it — one
+// definition, so the wire format and the thing that fills the timesheet cannot
+// drift apart. (They already had: the app's copy was missing crew hours entirely,
+// which type-checked fine while quietly dropping every hour the foreman spoke.)
+export type { VoiceDraft, VoiceCrewLine, VoiceCrewDefault } from './voice-apply'
+import type { VoiceDraft } from './voice-apply'
+
 export interface VoiceResult {
   transcript: string
   draft: VoiceDraft

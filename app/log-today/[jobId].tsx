@@ -16,6 +16,8 @@ import { Feather } from '@expo/vector-icons'
 import { Screen } from '@/components/Screen'
 import { Button } from '@/components/Button'
 import { supabase } from '@/lib/supabase'
+import { takeVoiceDraft } from '@/lib/voice-draft-store'
+import { applyVoiceDraft } from '@/lib/voice-apply'
 import { colors, fontSize, spacing, radius } from '@/lib/theme'
 import { validQuantity, persistedLaborTotal } from '@/lib/daily-report'
 import { applyReport } from '@/lib/apply-report'
@@ -89,6 +91,13 @@ export default function LogTodayScreen() {
   const [work, setWork] = useState('')
   const [notes, setNotes] = useState('')
   const [materials, setMaterials] = useState<MaterialRow[]>([])
+  // What a spoken draft put on the sheet, so the foreman can see it before saving.
+  const [voiceNote, setVoiceNote] = useState<{
+    filled: number
+    matched: string[]
+    unmatched: string[]
+    skippedLocked: string[]
+  } | null>(null)
   const [seq, setSeq] = useState(0)
 
   // Safety — captured + saved SEPARATELY from the report (never through the offline
@@ -271,6 +280,38 @@ export default function LogTodayScreen() {
       setMissingReason(sdRow?.missing_reason ?? '')
       setIncident(sdRow ? sdRow.incident : null)
       setIncidentNotes(sdRow?.incident_notes ?? '')
+
+      // A spoken report waiting for this day gets laid over the sheet AFTER the
+      // real rows are loaded, so it fills in on top of what is already saved
+      // rather than racing it. Nothing is written — he still presses save.
+      const spoken = takeVoiceDraft(jobId, date)
+      if (spoken) {
+        const applied = applyVoiceDraft(rows, spoken)
+        setCrew(applied.rows)
+        if (spoken.workPerformed) setWork(spoken.workPerformed)
+        const extra = [spoken.holdups, spoken.safety, spoken.crewNote]
+          .filter((x) => x && x.trim())
+          .join('\n')
+        if (extra) setNotes((n) => (n ? `${n}\n${extra}` : extra))
+        if (spoken.materials.length > 0) {
+          setMaterials((prev) => [
+            ...prev,
+            ...spoken.materials.map((m, i) => ({
+              key: `v${i}`,
+              existingId: null,
+              name: m.name,
+              qty: m.quantity == null ? '' : String(m.quantity),
+              unit: m.unit ?? '',
+            })),
+          ])
+        }
+        setVoiceNote({
+          filled: applied.filledFromDefault,
+          matched: applied.matched.map((m) => m.name),
+          unmatched: applied.unmatched,
+          skippedLocked: applied.skippedLocked,
+        })
+      }
 
       setLoading(false)
     },
@@ -523,6 +564,41 @@ export default function LogTodayScreen() {
             <Feather name="chevron-right" size={18} color={colors.primary} />
           </TouchableOpacity>
         </View>
+
+        {/* What speech put on this sheet. Shown until he saves, because these are
+            numbers a machine heard and a man is about to sign off on. */}
+        {voiceNote && (
+          <View style={styles.voiceBanner}>
+            <View style={styles.voiceRow}>
+              <Feather name="mic" size={14} color={colors.primary} />
+              <Text style={styles.voiceTitle}>Filled in from what you said — check it</Text>
+              <TouchableOpacity onPress={() => setVoiceNote(null)} hitSlop={10}>
+                <Feather name="x" size={16} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+            {voiceNote.filled > 0 && (
+              <Text style={styles.voiceLine}>
+                {voiceNote.filled} {voiceNote.filled === 1 ? 'man' : 'men'} filled from
+                &quot;everybody&quot;.
+              </Text>
+            )}
+            {voiceNote.matched.length > 0 && (
+              <Text style={styles.voiceLine}>Named: {voiceNote.matched.join(', ')}.</Text>
+            )}
+            {voiceNote.unmatched.length > 0 && (
+              <Text style={[styles.voiceLine, styles.voiceWarn]}>
+                Couldn&apos;t tell who you meant by {voiceNote.unmatched.join(', ')} — enter them
+                by hand.
+              </Text>
+            )}
+            {voiceNote.skippedLocked.length > 0 && (
+              <Text style={[styles.voiceLine, styles.voiceWarn]}>
+                Left alone (split on the desktop): {voiceNote.skippedLocked.join(', ')}.
+              </Text>
+            )}
+            <Text style={styles.voiceLine}>Nothing is saved until you press save.</Text>
+          </View>
+        )}
 
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           {/* Crew */}
@@ -796,6 +872,20 @@ function HourField({
 }
 
 const styles = StyleSheet.create({
+  voiceBanner: {
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySoft,
+    gap: 2,
+  },
+  voiceRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  voiceTitle: { flex: 1, fontSize: fontSize.sm, fontWeight: '700', color: colors.primary },
+  voiceLine: { fontSize: fontSize.xs, color: colors.textSecondary },
+  voiceWarn: { color: colors.warning, fontWeight: '600' },
   flex: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.sm, paddingTop: spacing.sm },
   back: { padding: spacing.xs },

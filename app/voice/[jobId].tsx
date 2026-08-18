@@ -13,9 +13,17 @@ import { Screen } from '@/components/Screen'
 import { Button } from '@/components/Button'
 import { supabase } from '@/lib/supabase'
 import { transcribeVoice, type VoiceResult } from '@/lib/api'
+import { putVoiceDraft, clearVoiceDraft } from '@/lib/voice-draft-store'
 import { colors, fontSize, spacing, radius } from '@/lib/theme'
 
 type Phase = 'idle' | 'recording' | 'processing' | 'result'
+
+function todayIso(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+    d.getDate(),
+  ).padStart(2, '0')}`
+}
 
 export default function VoiceScreen() {
   const { jobId } = useLocalSearchParams<{ jobId: string }>()
@@ -151,7 +159,13 @@ export default function VoiceScreen() {
           <View style={styles.result}>
             <View style={styles.resultHeader}>
               <Text style={styles.resultTitle}>Read it back — check before you enter it</Text>
-              <TouchableOpacity onPress={() => setPhase('idle')} activeOpacity={0.7}>
+              <TouchableOpacity
+                onPress={() => {
+                  clearVoiceDraft()
+                  setPhase('idle')
+                }}
+                activeOpacity={0.7}
+              >
                 <Text style={styles.redo}>Redo</Text>
               </TouchableOpacity>
             </View>
@@ -185,9 +199,16 @@ export default function VoiceScreen() {
 
             <Field label="What you said" value={result.transcript} muted />
 
+            {/* The whole point: the timesheet opens already filled in from what he
+                said. Before this, the draft was read back and then discarded, and
+                he retyped the lot. */}
             <Button
-              label="Enter it on Log today"
-              onPress={() => router.replace(`/log-today/${jobId}`)}
+              label="Fill in today's sheet"
+              onPress={() => {
+                const date = todayIso()
+                putVoiceDraft(jobId, date, result.draft)
+                router.replace(`/log-today/${jobId}?date=${date}&fromVoice=1`)
+              }}
               style={{ marginTop: spacing.md }}
             />
           </View>
