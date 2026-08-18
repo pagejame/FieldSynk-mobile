@@ -69,12 +69,18 @@ interface MaterialRow {
 }
 
 export default function LogTodayScreen() {
-  const { jobId } = useLocalSearchParams<{ jobId: string }>()
+  // `date` is optional: arriving from the history screen opens that day rather
+  // than today, so "fix Tuesday" is one tap instead of arrowing back through the week.
+  const { jobId, date: dateParam } = useLocalSearchParams<{ jobId: string; date?: string }>()
   const router = useRouter()
 
   const [job, setJob] = useState<{ job_number: string; job_name: string } | null>(null)
   const [materialsEnabled, setMaterialsEnabled] = useState(false)
-  const [date, setDate] = useState(todayIso)
+  const [date, setDate] = useState(() =>
+    typeof dateParam === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) && dateParam <= todayIso()
+      ? dateParam
+      : todayIso(),
+  )
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 

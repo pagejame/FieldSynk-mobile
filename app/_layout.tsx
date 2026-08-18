@@ -52,6 +52,10 @@ function RootNavigator() {
           name="log-today/[jobId]"
           options={{ headerShown: false, animation: 'slide_from_right' }}
         />
+        <Stack.Screen
+          name="history/[jobId]"
+          options={{ headerShown: false, animation: 'slide_from_right' }}
+        />
       </Stack>
     </View>
   )

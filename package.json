@@ -11,7 +11,8 @@
     "build:all": "eas build -p all",
     "submit:ios": "eas submit -p ios",
     "submit:android": "eas submit -p android",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test": "node --test lib/*.test.ts"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",

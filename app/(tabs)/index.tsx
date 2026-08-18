@@ -57,7 +57,7 @@ export default function JobsScreen() {
       <View style={styles.header}>
         <Text style={styles.title}>Jobs</Text>
         <Text style={styles.subtitle}>
-          Tap a job to log today&apos;s report — or the mic to speak it.
+          Tap a job to log today&apos;s report. The clock shows what you&apos;ve already sent; the mic speaks it.
         </Text>
       </View>
 
@@ -101,6 +101,15 @@ export default function JobsScreen() {
                 <Text style={styles.jobName}>{item.job_name}</Text>
               </View>
               <View style={styles.cardRight}>
+                <TouchableOpacity
+                  onPress={() => router.push(`/history/${item.id}`)}
+                  style={styles.micBtn}
+                  activeOpacity={0.7}
+                  hitSlop={8}
+                  accessibilityLabel="See what you've sent on this job"
+                >
+                  <Feather name="clock" size={18} color={colors.primary} />
+                </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => router.push(`/voice/${item.id}`)}
                   style={styles.micBtn}

@@ -35,6 +35,13 @@ export async function enqueueReport(payload: DayReportPayload): Promise<void> {
   await writeQueue(withoutThis)
 }
 
+/** Dates for one job still sitting on the phone, so the history screen can say
+ *  "waiting to send" rather than claiming the day is in when it is not. */
+export async function getQueuedDatesForJob(jobId: string): Promise<string[]> {
+  const queue = await readQueue()
+  return queue.filter((q) => q.payload.jobId === jobId).map((q) => q.payload.date)
+}
+
 export async function getQueueCount(): Promise<number> {
   return (await readQueue()).length
 }
