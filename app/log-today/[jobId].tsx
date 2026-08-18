@@ -119,7 +119,11 @@ export default function LogTodayScreen() {
       if (!jobId) return
       setLoading(true)
       const [{ data: j }, { data: roster }, { data: co }, { data: cm }] = await Promise.all([
-        supabase.from('jobs').select('job_number, job_name').eq('id', jobId).maybeSingle(),
+        supabase
+          .from('jobs')
+          .select('job_number, job_name, default_hours_per_day')
+          .eq('id', jobId)
+          .maybeSingle(),
         supabase.from('employees').select('id, name').eq('status', 'active').order('name'),
         supabase.from('companies').select('id, settings').maybeSingle(),
         // The crew assigned to THIS job (across its crews), so the foreman sees
@@ -286,7 +290,10 @@ export default function LogTodayScreen() {
       // rather than racing it. Nothing is written — he still presses save.
       const spoken = takeVoiceDraft(jobId, date)
       if (spoken) {
-        const applied = applyVoiceDraft(rows, spoken)
+        // The job's own normal day. Everyone the supervisor never named gets this,
+        // which is why the wrap-up only has to cover the exceptions.
+        const scheduled = Number((j as { default_hours_per_day?: number } | null)?.default_hours_per_day) || 0
+        const applied = applyVoiceDraft(rows, spoken, scheduled)
         setCrew(applied.rows)
         if (spoken.workPerformed) setWork(spoken.workPerformed)
         const extra = [spoken.holdups, spoken.safety, spoken.crewNote]
@@ -578,12 +585,12 @@ export default function LogTodayScreen() {
             </View>
             {voiceNote.filled > 0 && (
               <Text style={styles.voiceLine}>
-                {voiceNote.filled} {voiceNote.filled === 1 ? 'man' : 'men'} filled from
-                &quot;everybody&quot;.
+                {voiceNote.filled} {voiceNote.filled === 1 ? 'man' : 'men'} set to a full
+                scheduled day — you didn&apos;t name them, so they worked normal.
               </Text>
             )}
             {voiceNote.matched.length > 0 && (
-              <Text style={styles.voiceLine}>Named: {voiceNote.matched.join(', ')}.</Text>
+              <Text style={styles.voiceLine}>You named: {voiceNote.matched.join(', ')}.</Text>
             )}
             {voiceNote.unmatched.length > 0 && (
               <Text style={[styles.voiceLine, styles.voiceWarn]}>
