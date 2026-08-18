@@ -6,7 +6,6 @@
     "orientation": "portrait",
     "scheme": "fieldsynk",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "icon": "./assets/icon.png",
     "ios": {
       "supportsTablet": true,
@@ -59,7 +58,10 @@
           "photosPermission": "FieldSynk lets you attach the day's safety forms from your photo library.",
           "cameraPermission": "FieldSynk uses the camera so you can photograph the day's safety forms and store them on the job."
         }
-      ]
+      ],
+      "expo-status-bar",
+      "expo-font",
+      "expo-asset"
     ],
     "experiments": {
       "typedRoutes": false
