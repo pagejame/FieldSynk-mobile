@@ -1,0 +1,16 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "fieldsynk-mobile-web",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "npm",
+        "run",
+        "web"
+      ],
+      "port": 8081
+    }
+  ]
+}

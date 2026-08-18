@@ -12,7 +12,8 @@
     "submit:ios": "eas submit -p ios",
     "submit:android": "eas submit -p android",
     "type-check": "tsc --noEmit",
-    "test": "node --test lib/*.test.ts"
+    "test": "node --test lib/*.test.ts",
+    "web": "expo start --web --port 8081"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",
