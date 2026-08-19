@@ -5,7 +5,11 @@ import { supabase } from './supabase'
 // The web voice route accepts a Supabase Bearer token (resolveApiAuth on the web),
 // so it runs as the signed-in user with the same row-level security.
 
-const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'https://fieldsynk.org'
+// MUST include www. The apex domain 308-redirects to www, and a redirect to a
+// DIFFERENT ORIGIN strips the Authorization header — deliberately, so credentials
+// cannot leak to another host. The request still arrived, just with no token, and
+// the server correctly refused it. Every "please sign in" on the phone was this.
+const API_BASE = process.env.EXPO_PUBLIC_API_URL ?? 'https://www.fieldsynk.org'
 
 // The draft shape lives in voice-apply, which is what actually consumes it — one
 // definition, so the wire format and the thing that fills the timesheet cannot
