@@ -72,3 +72,39 @@ export async function transcribeVoice(
   }
   return data
 }
+
+/** Send a GUIDED wrap-up: one clip per question, each tied to its prompt. */
+export async function sendWrapUp(
+  jobId: string,
+  answers: { key: string; prompt: string; audioBase64: string }[],
+  mimeType: string,
+): Promise<VoiceResult> {
+  const { error: refreshErr } = await supabase.auth.getUser()
+  if (refreshErr) {
+    const { error: retryErr } = await supabase.auth.refreshSession()
+    if (retryErr) {
+      await supabase.auth.signOut()
+      throw new Error('Your sign-in ended. Please sign in again.')
+    }
+  }
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+  const token = session?.access_token
+  if (!token) throw new Error('Your sign-in ended. Please sign in again.')
+
+  const res = await fetch(`${API_BASE}/api/field-agents/voice`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ jobId, answers, mimeType }),
+  })
+
+  let data: (VoiceResult & { error?: string }) | null = null
+  try {
+    data = (await res.json()) as VoiceResult & { error?: string }
+  } catch {
+    throw new Error('The voice service returned an unexpected response.')
+  }
+  if (!res.ok || !data) throw new Error(data?.error ?? 'Could not process the wrap-up.')
+  return data
+}
