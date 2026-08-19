@@ -35,7 +35,15 @@ export async function transcribeVoice(
   const { error: refreshErr } = await supabase.auth.getUser()
   if (refreshErr) {
     const { error: retryErr } = await supabase.auth.refreshSession()
-    if (retryErr) throw new Error('Your sign-in expired — sign out and back in.')
+    if (retryErr) {
+      // The refresh token is gone server-side — Supabase revokes the whole chain
+      // when a rotated token is presented twice. Nothing can revive this session,
+      // so end it properly: signOut clears the dead token and the root layout
+      // sends him to the login screen. Leaving him on this page poking a mic and
+      // being told to "sign in" while he appears signed in is the worst outcome.
+      await supabase.auth.signOut()
+      throw new Error('Your sign-in ended. Please sign in again.')
+    }
   }
 
   const {
