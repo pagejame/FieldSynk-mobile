@@ -27,11 +27,22 @@ export async function transcribeVoice(
   audioBase64: string,
   mimeType: string,
 ): Promise<VoiceResult> {
+  // getSession() hands back whatever is stored, which on a phone that has been
+  // in a basement all day can be an ACCESS TOKEN THAT HAS ALREADY EXPIRED — the
+  // server then rejects it and the foreman is told to sign in when he is signed
+  // in perfectly well. Ask for the user first: that forces a refresh if one is
+  // due, so the token below is one the server will actually accept.
+  const { error: refreshErr } = await supabase.auth.getUser()
+  if (refreshErr) {
+    const { error: retryErr } = await supabase.auth.refreshSession()
+    if (retryErr) throw new Error('Your sign-in expired — sign out and back in.')
+  }
+
   const {
     data: { session },
   } = await supabase.auth.getSession()
   const token = session?.access_token
-  if (!token) throw new Error('Your session expired — sign in again.')
+  if (!token) throw new Error('Your sign-in expired — sign out and back in.')
 
   const res = await fetch(`${API_BASE}/api/field-agents/voice`, {
     method: 'POST',

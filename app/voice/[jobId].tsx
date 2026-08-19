@@ -14,6 +14,7 @@ import { Button } from '@/components/Button'
 import { supabase } from '@/lib/supabase'
 import { transcribeVoice, type VoiceResult } from '@/lib/api'
 import { putVoiceDraft, clearVoiceDraft } from '@/lib/voice-draft-store'
+import { WRAPUP_QUESTIONS } from '@/lib/wrapup'
 import { colors, fontSize, spacing, radius } from '@/lib/theme'
 
 type Phase = 'idle' | 'recording' | 'processing' | 'result'
@@ -146,10 +147,18 @@ export default function VoiceScreen() {
                 <TouchableOpacity style={styles.micBtn} onPress={startRecording} activeOpacity={0.8}>
                   <Feather name="mic" size={34} color="#fff" />
                 </TouchableOpacity>
-                <Text style={styles.hint}>
-                  Tap and say who&apos;s out, what the crew did, any material, holdups, and safety.
-                  About 90 seconds.
-                </Text>
+                <Text style={styles.hint}>Tap the mic and answer these:</Text>
+                <View style={styles.qList}>
+                  {WRAPUP_QUESTIONS.map((q, i) => (
+                    <View key={q.key} style={styles.qRow}>
+                      <Text style={styles.qNum}>{i + 1}.</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.qText}>{q.prompt}</Text>
+                        {!!q.hint && <Text style={styles.qHint}>{q.hint}</Text>}
+                      </View>
+                    </View>
+                  ))}
+                </View>
               </>
             )}
           </View>
@@ -228,6 +237,11 @@ function Field({ label, value, muted }: { label: string; value: string; muted?: 
 }
 
 const styles = StyleSheet.create({
+  qList: { alignSelf: 'stretch', gap: spacing.sm, paddingHorizontal: spacing.sm },
+  qRow: { flexDirection: 'row', gap: 8 },
+  qNum: { fontSize: fontSize.md, fontWeight: '700', color: colors.primary, width: 18 },
+  qText: { fontSize: fontSize.md, color: colors.textPrimary, lineHeight: 21 },
+  qHint: { fontSize: fontSize.sm, color: colors.textSecondary, marginTop: 1, lineHeight: 18 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
