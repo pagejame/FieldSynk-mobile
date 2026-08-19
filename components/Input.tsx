@@ -6,6 +6,7 @@ import {
   StyleSheet,
   type KeyboardTypeOptions,
   type ReturnKeyTypeOptions,
+  type TextInputProps,
 } from 'react-native'
 import { colors, radius, fontSize, spacing } from '@/lib/theme'
 
@@ -24,6 +25,12 @@ type Props = {
   returnKeyType?: ReturnKeyTypeOptions
   onSubmitEditing?: () => void
   blurOnSubmit?: boolean
+  /** iOS: what this field IS, so Keychain offers to save and fill it. Without
+   *  it the phone never offers to remember a login, which is the difference
+   *  between signing in once and signing in every day. */
+  textContentType?: TextInputProps['textContentType']
+  /** Android + web equivalent of the above. */
+  autoComplete?: TextInputProps['autoComplete']
 }
 
 export const Input = forwardRef<TextInput, Props>(function Input(
@@ -42,6 +49,8 @@ export const Input = forwardRef<TextInput, Props>(function Input(
     returnKeyType,
     onSubmitEditing,
     blurOnSubmit,
+    textContentType,
+    autoComplete,
   },
   ref,
 ) {
@@ -69,6 +78,8 @@ export const Input = forwardRef<TextInput, Props>(function Input(
         returnKeyType={returnKeyType}
         onSubmitEditing={onSubmitEditing}
         blurOnSubmit={blurOnSubmit}
+        textContentType={textContentType}
+        autoComplete={autoComplete}
       />
     </View>
   )

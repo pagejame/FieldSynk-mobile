@@ -58,7 +58,11 @@ export default function LoginScreen() {
       Alert.alert('Enter email', 'Type your email above, then tap Forgot password.')
       return
     }
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase())
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+      // Land on the web reset page. Without this the link has nowhere to go and
+      // the email is a dead end.
+      redirectTo: 'https://www.fieldsynk.org/reset-password',
+    })
     if (error) Alert.alert('Error', error.message)
     else Alert.alert('Check your email', `A reset link was sent to ${email.trim().toLowerCase()}.`)
   }
@@ -91,6 +95,11 @@ export default function LoginScreen() {
               keyboardType="email-address"
               autoCapitalize="none"
               autoCorrect={false}
+              // Marks this as the USERNAME of a login. Without it iOS never
+              // offers to save the password, so every foreman signs in by hand
+              // every time — which is the complaint.
+              textContentType="username"
+              autoComplete="email"
               returnKeyType="next"
               onSubmitEditing={() => passwordRef.current?.focus()}
               blurOnSubmit={false}
@@ -102,6 +111,10 @@ export default function LoginScreen() {
               placeholder="Password"
               secureTextEntry
               autoCapitalize="none"
+              // The other half. Together these make iOS offer "Save Password"
+              // after a successful sign-in, and offer to fill it next time.
+              textContentType="password"
+              autoComplete="current-password"
               ref={passwordRef}
               returnKeyType="go"
               onSubmitEditing={handleLogin}
