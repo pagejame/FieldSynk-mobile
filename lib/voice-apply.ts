@@ -19,6 +19,14 @@ export interface VoiceCrewLine {
   status: 'out' | 'short'
   hoursMissed: number | null
   reason: string
+  /**
+   * Which end of the day he missed. On a union job it decides his overtime:
+   * three hours off a 10-hour day is 5 ST + 2 OT if he was LATE ("start", he
+   * worked the end of the shift and the premium with it) and 7 ST + 0 OT if he
+   * went home early ("end"). null = he did not make it clear, and it is asked
+   * on the hours screen rather than assumed.
+   */
+  missedFrom: 'start' | 'end' | null
 }
 
 export interface VoiceCrewDefault {
