@@ -111,7 +111,7 @@ export default function JobsScreen() {
                   <Feather name="clock" size={18} color={colors.primary} />
                 </TouchableOpacity>
                 <TouchableOpacity
-                  onPress={() => router.push(`/wrapup/${item.id}`)}
+                  onPress={() => router.push(`/agent/${item.id}`)}
                   style={styles.micBtn}
                   activeOpacity={0.7}
                   hitSlop={8}

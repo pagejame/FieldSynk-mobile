@@ -53,6 +53,10 @@ function RootNavigator() {
           options={{ headerShown: false, animation: 'slide_from_right' }}
         />
         <Stack.Screen
+          name="agent/[jobId]"
+          options={{ headerShown: false, animation: 'slide_from_right' }}
+        />
+        <Stack.Screen
           name="wrapup/[jobId]"
           options={{ headerShown: false, animation: 'slide_from_right' }}
         />

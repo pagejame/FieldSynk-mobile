@@ -112,3 +112,119 @@ export async function sendWrapUp(
   if (!res.ok || !data) throw new Error(data?.error ?? 'Could not process the wrap-up.')
   return data
 }
+
+// ── The spoken wrap-up, one turn at a time ─────────────────────────────────
+
+/**
+ * A token the server will actually accept.
+ *
+ * getSession() hands back whatever is stored, which on a phone that has been in
+ * a basement all day can be an access token that has ALREADY EXPIRED — the
+ * server then rejects it and the foreman is told to sign in when he is signed in
+ * perfectly well. getUser() forces a refresh if one is due.
+ *
+ * Extracted on the third copy of it. Three transcriptions of the same subtle
+ * sequence is three chances for one of them to quietly lose the refresh.
+ */
+async function bearerToken(): Promise<string> {
+  const { error: refreshErr } = await supabase.auth.getUser()
+  if (refreshErr) {
+    const { error: retryErr } = await supabase.auth.refreshSession()
+    if (retryErr) {
+      // The refresh token is gone server-side — Supabase revokes the whole chain
+      // when a rotated token is presented twice. Nothing can revive this session.
+      await supabase.auth.signOut()
+      throw new Error('Your sign-in ended. Please sign in again.')
+    }
+  }
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+  const token = session?.access_token
+  if (!token) throw new Error('Your sign-in ended. Please sign in again.')
+  return token
+}
+
+export interface AgentMove {
+  kind: 'ask' | 'follow_up' | 'repeat' | 'handoff' | 'done'
+  questionKey?: string
+  say: string
+}
+
+export interface TurnReply {
+  /** Said once at the very start, before the first question. */
+  opening?: string
+  move: AgentMove
+  answers: Record<string, string>
+  followUps: Record<string, number>
+  heard: string | null
+  /** True when the recording arrived but could not be transcribed — so the app
+   *  can say "I couldn't hear you" rather than implying he said nothing. */
+  transcriptionFailed?: boolean
+}
+
+/**
+ * One exchange with the agent: send what he just said, get back the next thing
+ * to say out loud.
+ *
+ * The QUESTION LIST is rebuilt on the server every turn — this only sends his
+ * answers. An old build of this app therefore cannot drop the safety questions.
+ */
+export async function sendTurn(args: {
+  jobId: string
+  asked: string | null
+  answers: Record<string, string>
+  followUps: Record<string, number>
+  audioBase64?: string
+  mimeType?: string
+}): Promise<TurnReply> {
+  const token = await bearerToken()
+
+  const res = await fetch(`${API_BASE}/api/field-agents/voice/turn`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(args),
+  })
+
+  let data: (TurnReply & { error?: string }) | null = null
+  try {
+    data = (await res.json()) as TurnReply & { error?: string }
+  } catch {
+    throw new Error('The voice service returned an unexpected response.')
+  }
+  if (!res.ok || !data?.move) {
+    throw new Error(data?.error ?? "Couldn't reach the wrap-up agent.")
+  }
+  return data
+}
+
+/**
+ * Build the day from a spoken-agent conversation.
+ *
+ * Sends the TRANSCRIPTS the turn loop already produced, not audio: re-sending
+ * the clips would pay for a second transcription and could come back with
+ * different words — and then the draft would not match the conversation he just
+ * watched on screen. Same endpoint and same extractor as the guided flow, so
+ * there is one path from answers to a draft, not two.
+ */
+export async function finishAgentWrapUp(
+  jobId: string,
+  answers: { key: string; prompt: string; transcript: string }[],
+): Promise<VoiceResult> {
+  const token = await bearerToken()
+
+  const res = await fetch(`${API_BASE}/api/field-agents/voice`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ jobId, answers, mimeType: 'audio/m4a' }),
+  })
+
+  let data: (VoiceResult & { error?: string }) | null = null
+  try {
+    data = (await res.json()) as VoiceResult & { error?: string }
+  } catch {
+    throw new Error('The voice service returned an unexpected response.')
+  }
+  if (!res.ok || !data) throw new Error(data?.error ?? "Couldn't build the day.")
+  return data
+}
