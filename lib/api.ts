@@ -207,10 +207,23 @@ export async function sendTurn(args: {
  * watched on screen. Same endpoint and same extractor as the guided flow, so
  * there is one path from answers to a draft, not two.
  */
+export interface WrapUpResult extends VoiceResult {
+  sheet: { rows: unknown[]; unmatched: string[] } | null
+  sheetDate: string
+  costCodeOptions: { id: string; code: string; description: string | null }[]
+  rules: {
+    otDailyThreshold: number
+    saturdayRule: 'straight' | 'ot' | 'dt'
+    sundayRule: 'ot' | 'dt'
+    holidayRule: 'straight' | 'ot' | 'dt' | 'unpaid'
+  }
+  documentId: string | null
+}
+
 export async function finishAgentWrapUp(
   jobId: string,
   answers: { key: string; prompt: string; transcript: string }[],
-): Promise<VoiceResult> {
+): Promise<WrapUpResult> {
   const token = await bearerToken()
 
   const res = await fetch(`${API_BASE}/api/field-agents/voice`, {
@@ -219,12 +232,78 @@ export async function finishAgentWrapUp(
     body: JSON.stringify({ jobId, answers, mimeType: 'audio/m4a' }),
   })
 
-  let data: (VoiceResult & { error?: string }) | null = null
+  let data: (WrapUpResult & { error?: string }) | null = null
   try {
-    data = (await res.json()) as VoiceResult & { error?: string }
+    data = (await res.json()) as WrapUpResult & { error?: string }
   } catch {
     throw new Error('The voice service returned an unexpected response.')
   }
   if (!res.ok || !data) throw new Error(data?.error ?? "Couldn't build the day.")
   return data
+}
+
+// ── the review flow ────────────────────────────────────────────────────────
+
+/**
+ * One page of the day's safety paperwork.
+ *
+ * Goes through the web route rather than straight to Storage like
+ * uploadJobDocument does, because that route also records that the forms were
+ * DONE — and the whole reason the spoken safety question was dropped is that a
+ * photograph is the record and a spoken "yes" is not. One path, one behaviour on
+ * both the phone and the browser.
+ */
+export async function uploadSafetyPage(args: {
+  jobId: string
+  date: string
+  imageBase64: string
+  mimeType: string
+  page: number
+}): Promise<{ documentId: string; page: number }> {
+  const token = await bearerToken()
+
+  const res = await fetch(`${API_BASE}/api/field-agents/voice/safety-photo`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(args),
+  })
+
+  const data = (await res.json().catch(() => null)) as
+    | { documentId: string; page: number; error?: string }
+    | null
+  if (!res.ok || !data?.documentId) {
+    throw new Error(data?.error ?? "That photo didn't upload.")
+  }
+  return { documentId: data.documentId, page: data.page ?? args.page }
+}
+
+/**
+ * File the day.
+ *
+ * The hours are sent EXPLICITLY, per man, because he has just looked at the
+ * split and said it is right. Letting the server recompute would overrule a
+ * person who was standing on the job — and it is the only way the union
+ * short-day rule survives, since whether a man was late or left early cannot be
+ * recovered from a total.
+ */
+export async function fileTheDay(args: {
+  jobId: string
+  date: string
+  draft: unknown
+  documentId: string | null
+  hours: Record<string, { st: number; ot: number; dt: number }>
+  costCodes: Record<string, string>
+}): Promise<void> {
+  const token = await bearerToken()
+
+  const res = await fetch(`${API_BASE}/api/field-agents/voice/apply`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(args),
+  })
+
+  if (!res.ok) {
+    const data = (await res.json().catch(() => null)) as { error?: string } | null
+    throw new Error(data?.error ?? "The day couldn't be filed.")
+  }
 }

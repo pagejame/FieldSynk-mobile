@@ -3,6 +3,12 @@
   "compilerOptions": {
     "strict": true,
     "ignoreDeprecations": "6.0",
+    // Lets a source file import "./thing.ts" explicitly. Metro is happy either
+    // way, but `node --test` runs the real files with no bundler and cannot
+    // resolve an extensionless path — so a module that exports a FUNCTION (not
+    // just types) has to say the extension, or its tests cannot run at all.
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
     "baseUrl": ".",
     "paths": {
       "@/*": [

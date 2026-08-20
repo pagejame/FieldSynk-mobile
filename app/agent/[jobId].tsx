@@ -14,6 +14,8 @@ import { supabase } from '@/lib/supabase'
 import { sendTurn, finishAgentWrapUp } from '@/lib/api'
 import { putVoiceDraft } from '@/lib/voice-draft-store'
 import { WRAPUP_QUESTIONS } from '@/lib/wrapup'
+import { WrapUpReview, type CostCodeOption } from '@/components/WrapUpReview'
+import type { HoursRow, DayRules } from '@/lib/hours-row'
 import { colors, spacing, radius, fontSize } from '@/lib/theme'
 import {
   startCall,
@@ -41,6 +43,17 @@ function todayIso(): string {
   ).padStart(2, '0')}`
 }
 
+interface BuiltDay {
+  date: string
+  rows: HoursRow[]
+  unmatched: string[]
+  costCodeOptions: CostCodeOption[]
+  workSummary: string
+  draft: unknown
+  documentId: string | null
+  rules: DayRules
+}
+
 export default function AgentWrapUpScreen() {
   const { jobId } = useLocalSearchParams<{ jobId: string }>()
   const router = useRouter()
@@ -49,6 +62,9 @@ export default function AgentWrapUpScreen() {
   const [job, setJob] = useState<{ number: string; name: string } | null>(null)
   const [call, setCall] = useState<CallState>(startCall())
   const [error, setError] = useState<string | null>(null)
+  // Once the talking is done this holds the day and the review screens take
+  // over, on the same screen — so nothing but leaving can lose the conversation.
+  const [built, setBuilt] = useState<BuiltDay | null>(null)
   const [starting, setStarting] = useState(false)
   const [building, setBuilding] = useState(false)
 
@@ -221,15 +237,61 @@ export default function AgentWrapUpScreen() {
       }
 
       const res = await finishAgentWrapUp(jobId, answers)
-      const date = todayIso()
+      const date = res.sheetDate || todayIso()
+
+      // Kept for the old guided flow, and as a safety net: if anything below
+      // fails he can still open Log Today and find the day prefilled.
       putVoiceDraft(jobId, date, res.draft)
-      router.replace(`/log-today/${jobId}?date=${date}&fromVoice=1`)
+
+      if (!res.sheet) {
+        throw new Error(
+          "There's no crew assigned to this job, so there are no hours to check. Ask the office to add the crew.",
+        )
+      }
+
+      setBuilt({
+        date,
+        rows: res.sheet.rows as HoursRow[],
+        unmatched: res.sheet.unmatched ?? [],
+        costCodeOptions: res.costCodeOptions ?? [],
+        workSummary: res.draft?.workPerformed ?? '',
+        draft: res.draft,
+        documentId: res.documentId ?? null,
+        rules: res.rules,
+      })
     } catch (e) {
       setError(e instanceof Error ? e.message : "Couldn't build the day.")
     } finally {
       setBuilding(false)
       busy.current = false
     }
+  }
+
+  // The conversation is over — the review screens take it from here.
+  if (built) {
+    return (
+      <Screen>
+        <Text style={{ fontSize: fontSize.xxl, fontWeight: '700', color: colors.textPrimary }}>
+          Daily wrap-up
+        </Text>
+        {job && (
+          <Text style={{ fontSize: fontSize.md, color: colors.textMuted, marginTop: 2, marginBottom: spacing.md }}>
+            {job.number} — {job.name}
+          </Text>
+        )}
+        <WrapUpReview
+          jobId={jobId as string}
+          date={built.date}
+          rows={built.rows}
+          unmatched={built.unmatched}
+          costCodeOptions={built.costCodeOptions}
+          workSummary={built.workSummary}
+          draft={built.draft}
+          documentId={built.documentId}
+          rules={built.rules}
+        />
+      </Screen>
+    )
   }
 
   const phase = call.phase
