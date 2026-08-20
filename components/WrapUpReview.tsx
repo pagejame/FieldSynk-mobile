@@ -88,6 +88,7 @@ export function WrapUpReview(props: WrapUpReviewProps) {
       step,
       hoursConfirmed: true,
       missingCostCodes: rows.filter((r) => !r.costCodeId).length,
+      costCodesAvailable: props.costCodeOptions.length,
       unmatchedNames: unmatched,
       hasWorkSummary: summary.trim().length > 0,
       safetyPhotos: photos.length,
@@ -278,16 +279,33 @@ export function WrapUpReview(props: WrapUpReviewProps) {
         {/* ── 1. hours and cost codes ───────────────────────────────────── */}
         {step === 'hours' && (
           <View>
-            <Text
-              style={{
-                fontSize: fontSize.sm,
-                color: colors.textSecondary,
-                marginBottom: spacing.sm,
-              }}
-            >
-              Everyone is on a full day unless the agent heard otherwise. Set each
-              man&apos;s cost code — that part isn&apos;t guessed.
-            </Text>
+            {props.costCodeOptions.length === 0 ? (
+              // An empty sheet reads as a broken screen. Say what is true.
+              <View
+                style={{
+                  backgroundColor: colors.warningSoft,
+                  borderRadius: radius.sm,
+                  padding: spacing.sm,
+                  marginBottom: spacing.sm,
+                }}
+              >
+                <Text style={{ fontSize: fontSize.sm, color: colors.warning }}>
+                  No cost codes are set up on this job, so there are none to choose. The
+                  hours still file — the office adds them and can assign them after.
+                </Text>
+              </View>
+            ) : (
+              <Text
+                style={{
+                  fontSize: fontSize.sm,
+                  color: colors.textSecondary,
+                  marginBottom: spacing.sm,
+                }}
+              >
+                Everyone is on a full day unless the agent heard otherwise. Set each
+                man&apos;s cost code — that part isn&apos;t guessed.
+              </Text>
+            )}
 
             {rows.map((r) => {
               const code = r.costCodeId ? codeById.get(r.costCodeId) : null
@@ -413,7 +431,9 @@ export function WrapUpReview(props: WrapUpReviewProps) {
                   </Text>
 
                   <Pressable
-                    onPress={() => setPicking(r.employeeId)}
+                    onPress={() =>
+                      props.costCodeOptions.length > 0 ? setPicking(r.employeeId) : undefined
+                    }
                     style={{
                       marginTop: spacing.sm,
                       borderWidth: 1,
@@ -429,7 +449,7 @@ export function WrapUpReview(props: WrapUpReviewProps) {
                         color: code ? colors.textPrimary : colors.textMuted,
                       }}
                     >
-                      {code ? `${code.code}${code.description ? ` — ${code.description}` : ''}` : 'Set a cost code'}
+                      {code ? `${code.code}${code.description ? ` — ${code.description}` : ''}` : props.costCodeOptions.length === 0 ? 'No cost codes on this job' : 'Set a cost code'}
                     </Text>
                   </Pressable>
                 </View>

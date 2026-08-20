@@ -1,7 +1,7 @@
 // DELIBERATE DUPLICATE of the web repo's copy — separate repos, separate
 // release cycles, and a shared package would stop the phone shipping without
 // the web. The TESTS are duplicated too, so a drift between them fails a test
-// rather than making the phone pay a man differently from the browser.
+// rather than making the phone behave differently from the browser.
 // What the foreman walks through after he has finished talking.
 //
 //   hours -> summary -> safety -> review -> saved
@@ -41,6 +41,15 @@ export interface ReviewState {
   hoursConfirmed: boolean;
   /** How many workers still have no cost code. */
   missingCostCodes: number;
+  /**
+   * How many cost codes this job has at all.
+   *
+   * Zero changes what the missing-code warning MEANS: it stops being something
+   * he can fix and becomes a fact about the job's setup. Telling a man on a site
+   * that four workers need a code, when the job has none to give them, is noise
+   * he learns to scroll past — and then he scrolls past the real warnings too.
+   */
+  costCodesAvailable: number;
   /** Names the agent heard that matched no worker. These BLOCK. */
   unmatchedNames: string[];
   /** Whether the work summary has any text at all. */
@@ -77,7 +86,7 @@ export function checkStep(step: ReviewStep, s: ReviewState): StepCheck {
           : `These names match nobody on the crew: ${s.unmatchedNames.join(", ")}. Sort them out before the hours can be filed.`,
       );
     }
-    if (s.missingCostCodes > 0) {
+    if (s.missingCostCodes > 0 && s.costCodesAvailable > 0) {
       warnings.push(
         s.missingCostCodes === 1
           ? "One worker has no cost code. His hours will still be filed and the office can add it."

@@ -15,6 +15,7 @@ const clean: ReviewState = {
   step: "hours",
   hoursConfirmed: true,
   missingCostCodes: 0,
+  costCodesAvailable: 6,
   unmatchedNames: [],
   hasWorkSummary: true,
   safetyPhotos: 2,
@@ -76,6 +77,23 @@ test("a missing cost code WARNS but does not stop the day being filed", () => {
 test("the cost-code warning counts correctly and reads naturally either way", () => {
   assert.match(checkStep("hours", { ...clean, missingCostCodes: 1 }).warnings[0], /^One worker/);
   assert.match(checkStep("hours", { ...clean, missingCostCodes: 4 }).warnings[0], /^4 workers/);
+});
+
+test("a job with NO cost codes does not nag about codes nobody can set", () => {
+  // Telling a man on a site that four workers need a code, when the job has none
+  // to give them, is noise he learns to scroll past — and then he scrolls past
+  // the real warnings too. The screen says the job has none instead.
+  const s = { ...clean, missingCostCodes: 4, costCodesAvailable: 0 };
+  const c = checkStep("hours", s);
+
+  assert.deepEqual(c.warnings, []);
+  assert.deepEqual(c.blockers, []);
+  assert.ok(canAdvance("hours", s));
+});
+
+test("a job that HAS codes still nags when men are missing one", () => {
+  const s = { ...clean, missingCostCodes: 4, costCodesAvailable: 6 };
+  assert.equal(checkStep("hours", s).warnings.length, 1);
 });
 
 test("no work summary warns that this is the part the customer reads", () => {
