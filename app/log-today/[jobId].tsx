@@ -97,6 +97,7 @@ export default function LogTodayScreen() {
     matched: string[]
     unmatched: string[]
     skippedLocked: string[]
+    missingHours: string[]
   } | null>(null)
   const [seq, setSeq] = useState(0)
 
@@ -310,6 +311,7 @@ export default function LogTodayScreen() {
           matched: applied.matched.map((m) => m.name),
           unmatched: applied.unmatched,
           skippedLocked: applied.skippedLocked,
+          missingHours: applied.missingHours,
         })
       }
 
@@ -594,6 +596,15 @@ export default function LogTodayScreen() {
             {voiceNote.skippedLocked.length > 0 && (
               <Text style={[styles.voiceLine, styles.voiceWarn]}>
                 Left alone (split on the desktop): {voiceNote.skippedLocked.join(', ')}.
+              </Text>
+            )}
+            {/* He said these men were short but not by how much. Their boxes
+                still show a full day, which is almost certainly wrong — so say
+                so rather than let it be saved quietly. */}
+            {voiceNote.missingHours.length > 0 && (
+              <Text style={[styles.voiceLine, styles.voiceWarn]}>
+                You said {voiceNote.missingHours.join(', ')} left early but not by how
+                much — they&apos;re still showing a full day. Fix the hours before you save.
               </Text>
             )}
             <Text style={styles.voiceLine}>Nothing is saved until you press save.</Text>

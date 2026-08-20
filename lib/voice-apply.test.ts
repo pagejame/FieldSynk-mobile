@@ -87,20 +87,61 @@ test('"everybody was on eight" fills the whole crew', () => {
   assert.equal(draftHoursTotal(r.rows), 24)
 })
 
-test('a named man overrides the blanket figure', () => {
-  // "Everybody was on eight, Tony had eight and two."
+test('a man who left early is short by what he missed, off the blanket figure', () => {
+  // "Everybody was on eight, Tony left two hours early."
   const r = applyVoiceDraft(
     CREW,
     draft({
       crewDefault: { st: 8, ot: null, dt: null },
-      crew: [{ name: 'Tony', st: 8, ot: 2, dt: null, out: false, reason: '' }],
+      crew: [{ name: 'Tony', status: 'short', hoursMissed: 2, reason: 'dentist' }],
     }),
   )
   const tony = r.rows.find((x) => x.employeeId === 'e1')!
-  assert.equal(tony.st, 8)
-  assert.equal(tony.ot, 2)
+  assert.equal(tony.st, 6)
+  assert.equal(tony.out, false)
+  assert.equal(tony.reason, 'dentist')
   assert.equal(r.rows.find((x) => x.employeeId === 'e3')!.st, 8, 'the rest still get the blanket')
-  assert.equal(draftHoursTotal(r.rows), 26)
+  assert.equal(draftHoursTotal(r.rows), 22)
+})
+
+test('missed hours come off the END of the day, not the start', () => {
+  // "Everybody was on eight and two, Tony left three hours early." He loses the
+  // last three hours he would have worked — the premium ones — not his first.
+  const r = applyVoiceDraft(
+    CREW,
+    draft({
+      crewDefault: { st: 8, ot: 2, dt: null },
+      crew: [{ name: 'Tony', status: 'short', hoursMissed: 3, reason: '' }],
+    }),
+  )
+  const tony = r.rows.find((x) => x.employeeId === 'e1')!
+  assert.equal(tony.ot, 0)
+  assert.equal(tony.st, 7)
+  // The total is what has to agree with the web: base 10 minus 3 missed.
+  assert.equal(tony.st + tony.ot + tony.dt, 7)
+})
+
+test('missing more than the whole day never goes negative', () => {
+  const r = applyVoiceDraft(
+    CREW,
+    draft({
+      crewDefault: { st: 8, ot: null, dt: null },
+      crew: [{ name: 'Tony', status: 'short', hoursMissed: 99, reason: '' }],
+    }),
+  )
+  const tony = r.rows.find((x) => x.employeeId === 'e1')!
+  assert.deepEqual([tony.st, tony.ot, tony.dt], [0, 0, 0])
+})
+
+test('fractional missed hours do not drift', () => {
+  const r = applyVoiceDraft(
+    [row('e1', 'Tony Ruiz')],
+    draft({
+      crewDefault: { st: 8, ot: null, dt: null },
+      crew: [{ name: 'Tony', status: 'short', hoursMissed: 1.1, reason: '' }],
+    }),
+  )
+  assert.equal(r.rows[0].st, 6.9)
 })
 
 test('a man reported off gets no hours and keeps his reason', () => {
@@ -108,7 +149,7 @@ test('a man reported off gets no hours and keeps his reason', () => {
     CREW,
     draft({
       crewDefault: { st: 8, ot: null, dt: null },
-      crew: [{ name: 'Dave', st: null, ot: null, dt: null, out: true, reason: 'sick' }],
+      crew: [{ name: 'Dave', status: 'out', hoursMissed: null, reason: 'sick' }],
     }),
   )
   const dave = r.rows.find((x) => x.employeeId === 'e2')!
@@ -128,16 +169,28 @@ test('the blanket figure never reaches a man already marked off', () => {
   assert.equal(r.filledFromDefault, 2)
 })
 
-test('silence leaves the box alone — it is not zeroed', () => {
-  // He said Tony had two hours of overtime and nothing about straight time. The
-  // 8 already in the box stays; it does not get wiped to 0.
+test('"he was short" with no figure keeps the day AND is reported', () => {
+  // Inventing a number here puts a made-up figure into somebody's pay. The full
+  // day stands, and his name comes back so the screen can put it in front of the
+  // foreman instead of quietly saving a full day for a man he said left early.
   const started = [row('e1', 'Tony Ruiz', { st: 8 })]
   const r = applyVoiceDraft(
     started,
-    draft({ crew: [{ name: 'Tony', st: null, ot: 2, dt: null, out: false, reason: '' }] }),
+    draft({ crew: [{ name: 'Tony', status: 'short', hoursMissed: null, reason: 'dentist' }] }),
   )
   assert.equal(r.rows[0].st, 8)
-  assert.equal(r.rows[0].ot, 2)
+  assert.equal(r.rows[0].out, false)
+  assert.equal(r.rows[0].reason, 'dentist')
+  assert.deepEqual(r.missingHours, ['Tony Ruiz'])
+})
+
+test('a man who was OUT is not reported as missing a figure', () => {
+  // Out is a whole day. There is no number to ask for.
+  const r = applyVoiceDraft(
+    CREW,
+    draft({ crew: [{ name: 'Dave', status: 'out', hoursMissed: null, reason: 'sick' }] }),
+  )
+  assert.deepEqual(r.missingHours, [])
 })
 
 test('a locked row is never touched, and is reported', () => {
@@ -153,7 +206,7 @@ test('a locked row is never touched, and is reported', () => {
 test('a spoken name that matches nobody is reported, not silently dropped', () => {
   const r = applyVoiceDraft(
     CREW,
-    draft({ crew: [{ name: 'Bartholomew', st: 8, ot: null, dt: null, out: false, reason: '' }] }),
+    draft({ crew: [{ name: 'Bartholomew', status: 'short', hoursMissed: 2, reason: '' }] }),
   )
   assert.deepEqual(r.unmatched, ['Bartholomew'])
   assert.deepEqual(r.rows.map((x) => x.st), [0, 0, 0], 'nobody got his hours')
@@ -163,7 +216,7 @@ test('an ambiguous name is reported as unmatched rather than paid to a guess', (
   const two = [...CREW, row('e4', 'Dave Prentiss')]
   const r = applyVoiceDraft(
     two,
-    draft({ crew: [{ name: 'Dave', st: 10, ot: null, dt: null, out: false, reason: '' }] }),
+    draft({ crew: [{ name: 'Dave', status: 'out', hoursMissed: null, reason: '' }] }),
   )
   assert.deepEqual(r.unmatched, ['Dave'])
   assert.equal(r.rows.find((x) => x.employeeId === 'e2')!.st, 0)
@@ -173,7 +226,7 @@ test('an ambiguous name is reported as unmatched rather than paid to a guess', (
 test('matched names come back for the read-back', () => {
   const r = applyVoiceDraft(
     CREW,
-    draft({ crew: [{ name: 'Tony', st: 8, ot: null, dt: null, out: false, reason: '' }] }),
+    draft({ crew: [{ name: 'Tony', status: 'out', hoursMissed: null, reason: '' }] }),
   )
   assert.deepEqual(r.matched, [{ spoken: 'Tony', name: 'Tony Ruiz' }])
 })

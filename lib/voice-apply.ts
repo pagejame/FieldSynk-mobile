@@ -10,12 +10,29 @@
 // transcript that says "Dave" is not enough to decide whose day it is, so it
 // matches nobody and says so. A wrong match pays the wrong man.
 
+// ============================================================================
+// THIS IS THE WIRE FORMAT. It must match `VoiceCrewLine` in the web repo
+// (`src/lib/field-agents/voice/extract.ts`) exactly — the server builds this and
+// the phone consumes it, and nothing type-checks across the two repos.
+//
+// It did NOT match, from the day the server's extractor changed shape until
+// 2026-08-19. The phone still expected `{st, ot, dt, out}` while the server had
+// moved to `{status, hoursMissed}`. Both repos type-checked cleanly, because
+// each was internally consistent — with different things. On the phone every
+// field came back `undefined`, so `line.out` was falsy and `line.st ?? row.st`
+// always took the row: a man reported OUT was not marked out, and a man reported
+// SHORT was paid a full day. The per-man exceptions — the whole reason this
+// section exists — vanished with no error anywhere.
+//
+// If you change either side, change both. There is no compiler that will catch
+// you; `voice-wire.test.ts` is the only thing standing there.
+// ============================================================================
 export interface VoiceCrewLine {
   name: string
-  st: number | null
-  ot: number | null
-  dt: number | null
-  out: boolean
+  /** "out" = not there at all. "short" = there, but not for the full day. */
+  status: 'out' | 'short'
+  /** How many hours they missed, when he said. null = he did not say. */
+  hoursMissed: number | null
   reason: string
 }
 
@@ -33,7 +50,14 @@ export interface VoiceDraft {
   safety: string
   crewNote: string
   crewDefault: VoiceCrewDefault | null
+  /** ONLY the men who were out or short. Everyone else worked their schedule. */
   crew: VoiceCrewLine[]
+  /**
+   * The code the extractor thinks the day belongs to, with how sure it was.
+   * The server sends it; the phone does not use it yet. Declared so the shape
+   * stays honest about what actually arrives on the wire.
+   */
+  costCode?: { code: string; confidence: number } | null
 }
 
 /** The bits of a crew row this touches. Kept structural so the screen's own row
@@ -60,9 +84,20 @@ export interface ApplyResult<T extends ApplicableRow> {
   skippedLocked: string[]
   /** How many rows the blanket figure filled. */
   filledFromDefault: number
+  /**
+   * Men he said were SHORT without saying how short.
+   * Their hours are left at the full day, which is almost certainly wrong — the
+   * screen must put this in front of him rather than let a full day be saved for
+   * a man he just said left early.
+   */
+  missingHours: string[]
 }
 
 const norm = (s: string): string => s.trim().toLowerCase().replace(/\s+/g, ' ')
+
+/** Hours to the cent-equivalent. Subtracting 1.1 from 8 in floating point gives
+ *  6.8999999999999995, which is not a figure to put on a timesheet. */
+const round2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100
 
 /**
  * Which roster row a spoken name refers to, or null when it is not certain.
@@ -111,6 +146,7 @@ export function applyVoiceDraft<T extends ApplicableRow>(
   const matched: { spoken: string; name: string }[] = []
   const unmatched: string[] = []
   const skippedLocked: string[] = []
+  const missingHours: string[] = []
   let filledFromDefault = 0
 
   // Resolve every spoken name first, so a name that matches nobody is reported
@@ -139,21 +175,46 @@ export function applyVoiceDraft<T extends ApplicableRow>(
 
     const line = byEmployee.get(row.employeeId)
 
-    if (line?.out) {
+    if (line?.status === 'out') {
       // Reported off: no hours, and the reason he gave carries over.
       return { ...row, st: 0, ot: 0, dt: 0, out: true, reason: line.reason || row.reason }
     }
 
     if (line) {
-      // Named: only the parts he actually said are replaced. A null is silence,
-      // not zero, so whatever was already in the box stays.
-      return {
-        ...row,
-        st: line.st ?? row.st,
-        ot: line.ot ?? row.ot,
-        dt: line.dt ?? row.dt,
-        out: false,
+      // SHORT: he was here, but not for the whole day. His day starts at the
+      // blanket figure if the foreman gave one, otherwise whatever is already in
+      // the boxes, and the missed hours come off it.
+      const base = {
+        st: d?.st ?? row.st,
+        ot: d?.ot ?? row.ot,
+        dt: d?.dt ?? row.dt,
       }
+      const reason = line.reason || row.reason
+
+      if (line.hoursMissed == null) {
+        // He said this man missed time but not how much. Guessing a figure here
+        // would put an invented number into somebody's pay, so the full day
+        // stands and the name is reported for him to correct. The web asks him
+        // on the spot; the phone can at least refuse to hide it.
+        missingHours.push(row.name)
+        return { ...row, ...base, out: false, reason }
+      }
+
+      // Hours come off the END of the day — double time first, then overtime,
+      // then straight. A man who leaves early loses the last hours he would have
+      // worked, not the first. The TOTAL matches what the web computes for the
+      // same report (base total minus missed), which is the number that has to
+      // agree between the two.
+      let left = Math.max(0, line.hoursMissed)
+      const take = (v: number) => {
+        const t = Math.min(v, left)
+        left = round2(left - t)
+        return round2(v - t)
+      }
+      const dt = take(base.dt)
+      const ot = take(base.ot)
+      const st = take(base.st)
+      return { ...row, st, ot, dt, out: false, reason }
     }
 
     // Not named. The blanket figure applies — but never to somebody already
@@ -172,7 +233,7 @@ export function applyVoiceDraft<T extends ApplicableRow>(
     return row
   })
 
-  return { rows: out, matched, unmatched, skippedLocked, filledFromDefault }
+  return { rows: out, matched, unmatched, skippedLocked, filledFromDefault, missingHours }
 }
 
 /** Total hours a draft would put on the sheet — shown before he saves. */
