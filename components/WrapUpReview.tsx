@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   View,
   Text,
@@ -27,6 +27,13 @@ import {
   type ReviewState,
 } from '@/lib/review-flow'
 import { uploadSafetyPage, fileTheDay } from '@/lib/api'
+import AsyncStorage from '@react-native-async-storage/async-storage'
+import {
+  reviewDraftKey,
+  parseStoredReview,
+  serializeReview,
+  isFresh,
+} from '@/lib/review-draft'
 
 // What the foreman walks through once he has stopped talking.
 //
@@ -82,6 +89,68 @@ export function WrapUpReview(props: WrapUpReviewProps) {
   const [error, setError] = useState<string | null>(null)
   /** Which row's cost code is being chosen. */
   const [picking, setPicking] = useState<string | null>(null)
+
+  // AsyncStorage cannot be read during render, so the screen waits rather than
+  // showing the agent's version and then swapping it for his corrections — which
+  // would look exactly like it had thrown his work away.
+  const [restoring, setRestoring] = useState(true)
+  const key = reviewDraftKey(props.jobId, props.date)
+
+  useEffect(() => {
+    let live = true
+    void (async () => {
+      try {
+        const saved = parseStoredReview<HoursRow, Record<string, unknown>>(
+          await AsyncStorage.getItem(key),
+        )
+        if (live && saved && isFresh(saved.savedAt, new Date())) {
+          setRows(saved.rows)
+          setSummary(saved.summary)
+          setUnmatched(saved.unmatched)
+          setDraft(saved.draft)
+          setPhotos(saved.photos.map((p) => ({ ...p, uri: '' })))
+          setStep(saved.step as ReviewStep)
+        }
+      } catch {
+        // Losing the draft is a nuisance; a screen that will not open is not.
+      } finally {
+        if (live) setRestoring(false)
+      }
+    })()
+    return () => {
+      live = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key])
+
+  // Save after every change. An app evicted while he takes a call must not cost
+  // him five minutes of talking and a sheet he corrected man by man — once is
+  // enough for him to stop doing the wrap-up at all.
+  //
+  // On the device, not the server: none of this is agreed yet, and a
+  // half-corrected sheet in the database would be a day that exists without
+  // anybody having said it was right.
+  const saved = useRef(false)
+  useEffect(() => {
+    if (restoring || step === 'saved') return
+    saved.current = true
+    void AsyncStorage.setItem(
+      key,
+      serializeReview(
+        {
+          rows,
+          summary,
+          unmatched,
+          draft,
+          photos: photos.map((p) => ({ documentId: p.documentId, page: p.page })),
+          step,
+        },
+        new Date(),
+      ),
+    ).catch(() => {
+      /* storage full or disabled — not worth interrupting him over */
+    })
+  }, [key, restoring, rows, summary, unmatched, draft, photos, step])
 
   const state: ReviewState = useMemo(
     () => ({
@@ -190,12 +259,23 @@ export function WrapUpReview(props: WrapUpReviewProps) {
         hours,
         costCodes,
       })
+      // Filed. Throw the local copy away — a stale draft reappearing over
+      // tomorrow's wrap-up would be worse than having lost it.
+      void AsyncStorage.removeItem(key).catch(() => {})
       setStep('saved')
     } catch (e) {
       setError(e instanceof Error ? e.message : "The day couldn't be filed.")
     } finally {
       setBusy(false)
     }
+  }
+
+  if (restoring) {
+    return (
+      <View style={{ paddingVertical: spacing.xl, alignItems: 'center' }}>
+        <ActivityIndicator color={colors.primary} />
+      </View>
+    )
   }
 
   // ── filed ─────────────────────────────────────────────────────────────────
