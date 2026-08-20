@@ -8,6 +8,12 @@
 //
 // THE RULE: the crew is assumed to have worked their scheduled hours. Nobody
 // says "everybody was on eight". Only the exceptions are spoken.
+//
+// SAFETY IS NOT ASKED (James, 2026-08-19). "Were the forms done?" gets a yes
+// from a man keen to get in his truck, and a yes is not a record. He photographs
+// the forms instead, which is what an inspector actually wants. The catch-all
+// "anything else for the office?" is gone too — the review screens let him add
+// anything, in writing, where he can see what he is saying.
 
 export interface WrapUpQuestion {
   key: string
@@ -24,15 +30,12 @@ export const WRAPUP_QUESTIONS: WrapUpQuestion[] = [
     hint: "Only say the ones who weren't — who was out or short, how long, and why.",
   },
   { key: 'work', prompt: 'What did the crew get done today?' },
-  { key: 'holdups', prompt: 'Anything hold you up?' },
+  { key: 'delays', prompt: "Anything that caused a delay in your crew's work?" },
   {
     key: 'materials',
     prompt: 'Any material worth recording?',
     materialsOnly: true,
   },
-  { key: 'safety_forms', prompt: "Were today's safety forms done?" },
-  { key: 'safety_incident', prompt: 'Any incidents or near misses?' },
-  { key: 'notes', prompt: 'Anything else for the office?' },
 ]
 
 export function wrapUpQuestions(materialsEnabled: boolean): WrapUpQuestion[] {

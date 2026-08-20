@@ -51,7 +51,7 @@ test('an optional question can be passed over in silence', () => {
   let s = startFlow(false)
   s = next(answerCurrent(s)) // crew
   s = next(answerCurrent(s)) // work
-  assert.equal(currentQuestion(s)?.key, 'holdups')
+  assert.equal(currentQuestion(s)?.key, 'delays')
   assert.ok(!isRequired(currentQuestion(s)!))
   assert.ok(canGoNext(s), 'no answer needed')
 })
@@ -90,15 +90,25 @@ test('back stops at the first question rather than going negative', () => {
   assert.equal(back(back(startFlow(false))).index, 0)
 })
 
-test('it cannot be sent while a required question is unanswered — even a late one', () => {
-  // The whole reason this screen exists: reaching the end with safety missed.
+test('it cannot be sent while a required question is unanswered', () => {
+  // The crew answer decides what men are paid, so it cannot be left out. Built
+  // directly rather than by walking the flow, because the flow will not LET you
+  // step past a required question — which is the same guard, one screen earlier.
+  const s0 = startFlow(false)
+  const workIdx = s0.questions.findIndex((q) => q.key === 'work')
+  const s = withAnswer({ ...s0, index: workIdx }, 'file://work.m4a', 5)
+
+  assert.ok(!canSubmit(s))
+  assert.deepEqual(missingRequired(s).map((q) => q.key), ['crew'])
+})
+
+test('answering the crew and the work is enough — the optionals are optional', () => {
   let s = startFlow(false)
   s = next(answerCurrent(s)) // crew
   s = next(answerCurrent(s)) // work
-  s = next(s) // holdups skipped
-  // safety_forms and safety_incident deliberately not answered
-  assert.ok(!canSubmit(s))
-  assert.deepEqual(missingRequired(s).map((q) => q.key), ['safety_forms', 'safety_incident'])
+  s = next(s) // delays skipped: a clean day genuinely has none
+  assert.ok(canSubmit(s))
+  assert.deepEqual(missingRequired(s), [])
 })
 
 test('answering everything required allows sending, optionals or not', () => {
@@ -120,13 +130,13 @@ test('the run finishes after the last question', () => {
 })
 
 test('progress counts answers against the questions actually asked', () => {
-  let s = startFlow(true) // materials on -> 7 questions
-  assert.deepEqual(progress(s), { answered: 0, total: 7 })
+  let s = startFlow(true) // materials on -> crew, work, delays, materials
+  assert.deepEqual(progress(s), { answered: 0, total: 4 })
   s = next(answerCurrent(s))
-  assert.deepEqual(progress(s), { answered: 1, total: 7 })
+  assert.deepEqual(progress(s), { answered: 1, total: 4 })
 })
 
-test('the required set is exactly crew, work and both safety questions', () => {
+test('the required set is exactly the crew and the work', () => {
   const req = startFlow(true).questions.filter(isRequired).map((q) => q.key)
-  assert.deepEqual(req, ['crew', 'work', 'safety_forms', 'safety_incident'])
+  assert.deepEqual(req, ['crew', 'work'])
 })

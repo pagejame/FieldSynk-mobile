@@ -51,11 +51,11 @@ test('what he said is attached to the question he was answering', () => {
 
 test('a repeat REPLACES the unanswered line instead of stacking', () => {
   let s = startCall()
-  s = afterTurn(s, { move: ask('Any incidents or near misses?', 'safety_incident') })
+  s = afterTurn(s, { move: ask('What did the crew get done today?', 'work') })
 
   for (let i = 0; i < 3; i++) {
     s = afterTurn(s, {
-      move: { kind: 'repeat', questionKey: 'safety_incident', say: "Sorry, I didn't catch that." },
+      move: { kind: 'repeat', questionKey: 'work', say: "Sorry, I didn't catch that." },
       heard: '',
     })
   }
@@ -80,9 +80,9 @@ test('a follow-up is its own line — it is a different question', () => {
 
 test('silence leaves the answer blank rather than recording an empty string', () => {
   let s = startCall()
-  s = afterTurn(s, { move: ask('Any incidents or near misses?', 'safety_incident') })
+  s = afterTurn(s, { move: ask('What did the crew get done today?', 'work') })
   s = afterTurn(s, {
-    move: { kind: 'repeat', questionKey: 'safety_incident', say: 'Say again?' },
+    move: { kind: 'repeat', questionKey: 'work', say: 'Say again?' },
     heard: '   ',
   })
   // Whitespace is not an answer — the log shows nothing was heard.
@@ -111,7 +111,7 @@ test('phase transitions only fire from the right phase', () => {
 test('progress counts answers, capped at the number of questions', () => {
   const s: CallState = {
     ...startCall(),
-    answers: { crew: 'x', work: 'y', holdups: '' },
+    answers: { crew: 'x', work: 'y', delays: '' },
   }
   assert.deepEqual(progress(s, 7), { answered: 3, total: 7 })
   assert.deepEqual(progress(s, 2), { answered: 2, total: 2 })
