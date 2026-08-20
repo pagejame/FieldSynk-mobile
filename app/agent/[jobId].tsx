@@ -65,6 +65,8 @@ export default function AgentWrapUpScreen() {
   // Once the talking is done this holds the day and the review screens take
   // over, on the same screen — so nothing but leaving can lose the conversation.
   const [built, setBuilt] = useState<BuiltDay | null>(null)
+  // Where each answer's recording was kept, gathered as he speaks.
+  const audioPaths = useRef<string[]>([])
   const [starting, setStarting] = useState(false)
   const [building, setBuilding] = useState(false)
 
@@ -194,6 +196,8 @@ export default function AgentWrapUpScreen() {
         mimeType: 'audio/m4a',
       })
 
+      if (reply.audioPath) audioPaths.current.push(reply.audioPath)
+
       setCall((c) => {
         const next = afterTurn(c, reply)
         if (next.phase === 'speaking') speakThenListen(reply.move.say)
@@ -236,7 +240,7 @@ export default function AgentWrapUpScreen() {
         return
       }
 
-      const res = await finishAgentWrapUp(jobId, answers)
+      const res = await finishAgentWrapUp(jobId, answers, audioPaths.current)
       const date = res.sheetDate || todayIso()
 
       // Kept for the old guided flow, and as a safety net: if anything below

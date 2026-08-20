@@ -158,6 +158,9 @@ export interface TurnReply {
   answers: Record<string, string>
   followUps: Record<string, number>
   heard: string | null
+  /** Where this answer's recording was kept. Collected and sent at the end so
+   *  the day's document points at every clip — a transcript cannot be played. */
+  audioPath?: string | null
   /** True when the recording arrived but could not be transcribed — so the app
    *  can say "I couldn't hear you" rather than implying he said nothing. */
   transcriptionFailed?: boolean
@@ -223,13 +226,14 @@ export interface WrapUpResult extends VoiceResult {
 export async function finishAgentWrapUp(
   jobId: string,
   answers: { key: string; prompt: string; transcript: string }[],
+  audioPaths: string[] = [],
 ): Promise<WrapUpResult> {
   const token = await bearerToken()
 
   const res = await fetch(`${API_BASE}/api/field-agents/voice`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ jobId, answers, mimeType: 'audio/m4a' }),
+    body: JSON.stringify({ jobId, answers, mimeType: 'audio/m4a', audioPaths }),
   })
 
   let data: (WrapUpResult & { error?: string }) | null = null
